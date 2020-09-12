@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::str::FromStr;
 use crate::bigint::nat_err::NatError;
 use crate::parse_err::ParseErrKind::{BeginWithIllegalChar, IllegalCharEncounter};
-use std::fmt::{Debug, Binary, LowerHex, UpperHex, Octal, Formatter};
+use std::fmt::{Debug, Binary, LowerHex, UpperHex, Octal, Formatter, Display};
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign, 
@@ -36,6 +36,11 @@ impl Nat {
         self.as_vec().clone()
     }
     
+    pub(super) fn into_vec(self) -> Vec<u32> {
+        self.nat.take()
+    }
+    
+    #[allow(unused)]
     pub(super) fn as_mut_slice(&self) -> &mut [u32] {
         self.as_mut_vec().as_mut_slice()
     }
@@ -44,6 +49,7 @@ impl Nat {
         self.as_slice().iter()
     }
     
+    #[allow(unused)]
     pub(super) fn iter_mut(&self) -> std::slice::IterMut<'_, u32> {
         self.as_mut_slice().iter_mut()
     }
@@ -119,7 +125,7 @@ impl Nat {
     
     pub(super) fn trim_head_zero_(v: &mut Vec<u32>) {
         let mut i = 0;
-        for &ele in v.iter() {
+        for &ele in v.iter().skip(1).rev() {
             if ele != 0 {
                 break;
             }
@@ -129,6 +135,7 @@ impl Nat {
         v.truncate(v.len() - i);
     }
 
+    #[allow(unused)]
     pub(super) fn trim_head_zero(&mut self) {
         Self::trim_head_zero_(self.as_mut_vec());
     }
@@ -154,8 +161,8 @@ impl Nat {
                         match itr.next() {
                             Some(x) => {
                                 if c == '0' {
-                                    if x.is_ascii_digit() {
-                                        Ok((i+1,8))
+                                    if x == 'o' {
+                                        Ok((i+2,8))
                                     } else if x == 'b' || x == 'B' {
                                         Ok((i+2, 2))
                                     } else if x == 'x' || x == 'X' {
@@ -181,85 +188,76 @@ impl Nat {
     }
     
     fn from_dec_str(s: &str) -> Result<Self, NatError> {
-        let mut v = Vec::with_capacity(s.len() / 10);
+        if s.is_empty() {return Ok(Nat::from(Vec::<u32>::new()));}
+        
+        let s = s.trim_start_matches('0');
+        if s.is_empty() { return Ok(Nat::from(0u32));}
+        
         const ZERO: u32 = '0' as u32;
-        let (mut tmp, mut is_last) = (0u32, false);
-        for c in s.chars().rev() {
-            if c.is_ascii_digit() {
-                match tmp.overflowing_add((c as u32) - ZERO) {
-                    (x, true) => {
-                        tmp = 1;
-                        v.push(x);
-                        is_last = false;
-                    },
-                    (x, false) => {
-                        tmp = x;
-                        is_last = true;
-                    }
-                }
-            } else {
+        let mut v = Vec::with_capacity(s.len());
+        
+        for c in s.chars() {
+            if !c.is_ascii_digit() {
                 return Err(NatError::new(IllegalCharEncounter, format!("illegal char {}", c)));
             }
+            v.push((c as u32) - ZERO);
         }
         
-        if is_last {v.push(tmp)};
-        Ok(Nat::from(v))
+        let mut nat = Nat::from(0u32);
+        v.iter().for_each(|&ele| {
+            let tmp = nat.clone() << 1;
+            nat <<= 3;
+            nat += tmp;
+            nat += Nat::from(ele);
+        });
+        
+        Ok(nat)
     }
     
     fn from_bin_str(s: &str) -> Result<Self, NatError> {
-        let (mut tmp, mut is_last) = (0, false);
+        let mut tmp = 0u32;
         let mut v = Vec::with_capacity(s.len() >> 5);
         for (i, c) in s.chars().rev().enumerate() {
             let x = if c == '0' {0} else if c == '1' {1} else {
                 return Err(NatError::new(IllegalCharEncounter, format!("illegal char {}", c)));
             };
             
-            if (i & 31) == 0 {
-                is_last = if i > 31 {
-                    v.push(tmp);
-                    false
-                } else {
-                    true
-                };
-                tmp = x;
-            } else {
-                tmp += x << i;
-                is_last = true;
+            tmp += x << (i & 31);
+            if (i & 31) == 31 {
+                v.push(tmp);
+                tmp = 0;
             }
         }
         
-        if is_last {v.push(tmp);}
+        if tmp > 0{v.push(tmp);} else {if !s.is_empty() {v.push(tmp);}}
         
         Ok(Nat::from(v))
     }
     
     fn from_oct_str(s: &str) -> Result<Self, NatError> {
         const ZERO: u32 = '0' as u32;
-        let (mut tmp, mut i, mut is_last) = (0, 0, false);
+        let (mut i, mut tmp) = (0, 0);
         let mut v = Vec::with_capacity(s.len() / 10);
         
         for c in s.chars().rev() {
             if c >= '0' && c <= '7' {
                 let n = (c as u32) - ZERO;
-                
-                if (i + 3) >= 29 {
-                    let x = ((1 << (32 - i)) - 1) & n;
-                    tmp += x << (32 - i);
+
+                if (i + 3) >= 32 {
+                    tmp += (((1 << (32 - i)) - 1) & n) << i;
                     v.push(tmp);
-                    tmp = n - x;
+                    tmp = n >> (32 - i);
                     i = (i + 3) - 32;
-                    is_last = false;
                 } else {
                     tmp += n << i;
                     i += 3;
-                    is_last = true;
                 }
             } else {
                 return Err(NatError::new(IllegalCharEncounter, format!("illegal char {}", c)));
             }
         }
 
-        if is_last {v.push(tmp);}
+        if tmp > 0 {v.push(tmp);} else {if !s.is_empty() {v.push(tmp);}}
         Ok(Nat::from(v))
     }
     
@@ -267,109 +265,24 @@ impl Nat {
         const ZERO: u32 = '0' as u32;
         const LA: u32 = 'a' as u32;
         const BA: u32 = 'A' as u32;
-        let (mut tmp, mut is_last) = (0, false);
+        let mut tmp = 0;
         let mut v = Vec::with_capacity(s.len() >> 3);
         
         for (i, c) in s.chars().rev().enumerate() {
             let n = if c >= '0' && c <= '9' {(c as u32) - ZERO}
-                else if c >= 'a' && c <= 'f' {(c as u32) - LA} 
-                else if c >= 'A' && c <= 'F' {(c as u32) - BA}
+                else if c >= 'a' && c <= 'f' {((c as u32) - LA) + 10}
+                else if c >= 'A' && c <= 'F' {((c as u32) - BA) + 10}
                 else {return Err(NatError::new(IllegalCharEncounter, format!("illegal char {}", c)))};
             
-            if (i & 7) == 0 {
-                is_last = if i > 7 {
-                    v.push(tmp);
-                    false
-                } else {
-                    true
-                };
-                tmp = n;
-            } else {
-                tmp += n << ((i & 7) << 2);
-                is_last = true;
+            tmp += n << ((i & 7) << 2);
+            if (i & 7) == 7 {
+                v.push(tmp);
+                tmp = 0;
             }
         }
         
-        if is_last {v.push(tmp);}
+        if tmp > 0 {v.push(tmp);} else {if !s.is_empty() {v.push(tmp);}}
         Ok(Nat::from(v))
-    }
-    
-    fn mul_inner(&self, max: &Self) -> Vec<u32> {
-        const MASK: u64 = 0xffffffff;
-        const SHR_BITS: u8 = 32;
-    
-        let (min, max, _) = Self::min_max(self, max);
-        let min: Vec<u64> = min.iter().map(|&x| {x as u64}).collect();
-        let max: Vec<u64> = max.iter().map(|&x| {x as u64}).collect();
-        let mut nat = Nat::from(0u32);
-        nat.as_mut_vec().reserve(min.len() + max.len());
-    
-        let mut round = Vec::with_capacity(min.len() + max.len());
-        min.iter().enumerate().for_each(|(i, &a)| {
-            round.clear();
-            // 每一轮乘max都左移32位, 额外留出32位作为上一次单步乘的进位
-            round.resize(i + 1, 0);
-            max.iter().for_each(|&b| {
-                let carry = round.pop().unwrap() as u64;
-                let x = a * b;
-                let (y, cy) = x.overflowing_add(carry);
-                round.push((y & MASK) as u32);
-                round.push((y >> SHR_BITS) as u32);
-                if cy { round.push(1)};
-            });
-            nat += Nat::from(round.as_slice());
-        });
-    
-        nat.trim_head_zero();
-        nat.to_vec()
-    }
-
-    pub(super) fn add_inner(&self, rhs: &Self) -> Vec<u32> {
-        let (min, max) = Nat::min_max_by_len(self.as_slice(), rhs.as_slice());
-
-        let mut v = Vec::with_capacity(max.len());
-        let mut carry = 0;
-        min.iter().zip(max.iter()).for_each(|(&a, &b)| {
-            let (x, cx) = a.overflowing_add(carry);
-            let (y, cy) = b.overflowing_add(x);
-            carry = if cx || cy {1} else {0};
-            v.push(y);
-        });
-
-        max.iter().skip(min.len()).for_each(|&a| {
-            let (x, cx) = a.overflowing_add(carry);
-            carry  = if cx {1} else {0};
-            v.push(x);
-        });
-
-        if carry > 0 {v.push(carry);}
-        v
-    }
-
-    /// (abs(self-rhs), self >= rhs)
-    pub(super) fn sub_inner_with_sign(&self, rhs: &Self) -> (Vec<u32>, bool) {
-        let mut v = Vec::new();
-        let mut carry = 0;
-        let (min, max, is_great) = Self::min_max(&self, &rhs);
-        max.iter().zip(min.iter()).for_each(|(&a, &b)| {
-            let (x, cx) = a.overflowing_sub(carry);
-            let (y, cy) = x.overflowing_sub(b);
-            carry = if cx || cy {1} else {0};
-            v.push(y);
-        });
-
-        max.iter().skip(min.num()).for_each(|&a| {
-            let (x, cx) = a.overflowing_sub(carry);
-            carry = if cx {1} else {0};
-            v.push(x);
-        });
-
-        Self::trim_head_zero_(&mut v);
-        (v, is_great)
-    }
-
-    pub(super) fn sub_inner(&self, rhs: &Self) -> Vec<u32> {
-        self.sub_inner_with_sign(rhs).0
     }
 
     /// (abs(self-rhs), self >= rhs)
@@ -424,7 +337,12 @@ impl Nat {
         } else {
             let mut v = Vec::with_capacity(self.num().saturating_sub(num));
             let (mut pre, mask, nom_c) = (0, (1 << nom) - 1, 32 - nom);
-            self.iter().skip(num).for_each(|&a| {
+            let mut itr = self.iter().skip(num);
+            match itr.next() {
+                Some(&x) => {pre = x >> nom;},
+                None => {v.push(0);},
+            }
+            itr.for_each(|&a| {
                 let val = (a & mask) << nom_c;
                 v.push(val | pre);
                 pre = a >> nom;
@@ -435,42 +353,62 @@ impl Nat {
     }
 
     pub(super) fn div_inner(&self, rhs: &Self) -> Vec<u32> {
-        let mut a = self.deep_clone();
+        assert_ne!(rhs, &0u32, "The divisor must not be 0");
         
-        assert_ne!(rhs, &0u32, "The dividend must not be 0");
-    
+        if self < rhs {
+            return vec![0];
+        }
+        
+        let (dividend_len, divisor_len) = (self.bits_len(), rhs.bits_len());
+        if dividend_len == divisor_len {
+            return vec![1];
+        }
+        
         let one = Nat::from(1u32);
-        let mut result = Nat::from(0u32);
-        while a >= rhs.clone() {
-            let mut c = rhs.deep_clone();
-            let mut i = 0;
-            while a >= c {
-                a -= c.clone();
-                result += one.clone() << i;
-                i += 1;
-                c <<= 1;
+        let mut nat = Nat::from(0u32);
+        let mut sc = self.deep_clone();
+        loop {
+            if sc >= rhs.clone() {
+                let mut shift = sc.bits_len() - divisor_len;
+                let mut den = rhs.clone() << shift;
+                while den > sc {
+                    den >>= 1;
+                    shift -= 1;
+                }
+                
+                sc -= den;
+                nat += one.clone() << shift;
+            } else {
+                break;
             }
         }
-    
-        result.to_vec()
+        
+        nat.into_vec()
     }
-    
+
     pub(super) fn rem_inner(&self, rhs: &Self) -> Vec<u32> {
-        let mut a = self.deep_clone();
-
         assert_ne!(rhs, &0u32, "The modulus must not be 0");
-
-        let mut result = Nat::from(0u32);
-        while a >= rhs.clone() {
-            let mut c = rhs.deep_clone();
-            while a >= c {
-                result = a.deep_clone();
-                a -= c.clone();
-                c <<= 1;
+        
+        if self < rhs {
+            return self.to_vec();
+        }
+        
+        let divisor_len = rhs.bits_len();
+        let mut sc = self.deep_clone();
+        loop {
+            if sc.clone() < rhs.clone() {
+                break;
+            } else {
+                let shift = sc.bits_len() - divisor_len;
+                let mut den = rhs.clone() << shift;
+                if den.clone() > sc.clone() {
+                    den >>= 1;
+                }
+                sc -= den;
             }
         }
-
-        result.to_vec()
+        
+        sc.into_vec()
     }
 
     pub(super) fn bitand_inner(&self, rhs: &Self) -> Vec<u32> {
@@ -521,11 +459,91 @@ impl Nat {
     pub(super) fn not_inner(&self) -> Vec<u32> {
         let mut v = Vec::with_capacity(self.num());
         
+        let bitlen = self.bits_len() & 31;
         self.iter().for_each(|&a| {
             v.push(!a);
         });
+        
+        if bitlen > 0 {
+            match v.last_mut() {
+                Some(x) => {
+                    *x = (*x) & ((1 << bitlen) - 1);
+                },
+                None => {},
+            }
+        }
+        
         Self::trim_head_zero_(&mut v);
         v
+    }
+    
+    #[inline]
+    pub(super) fn nan() -> Nat {
+        Nat::from(Vec::<u32>::new())
+    }
+    
+    pub(super) fn is_set_bit_(&self, idx: usize) -> bool {
+        let (num, rem) = (idx >> 5, (idx & 31));
+        match self.iter().nth(num) {
+            Some(&x) => {
+                (x & (1 << rem)) != 0
+            },
+            None => unreachable!(),
+        }
+    }
+    
+    /// check the bit is whether set to 1 in the `bit_idx`, 
+    /// `None` if `bit_idx >= self.bits_len()`.
+    pub fn is_set_bit(&self, bit_idx: usize) -> Option<bool> {
+        if bit_idx >= self.bits_len() {None}
+        else {Some(self.is_set_bit_(bit_idx))}
+    }
+    
+    /// self ^ b
+    pub fn pow(&self, b: Nat) -> Nat {
+        if self.is_nan() || b.is_nan() {return Nat::nan();}
+        
+        if self == &0u32 {if b.clone() == 0u32 {Nat::from(1u32)} else {Nat::from(0u32)}}
+        else if b.clone() == 0u32 {Nat::from(1u32)}
+        else {
+            let blen = b.bits_len();
+            let mut pre = self.deep_clone();
+            let mut cur = if b.is_set_bit_(0) {self.deep_clone()} else {Nat::from(1u32)};
+            (1..blen).for_each(|i| {
+                pre *= pre.clone();
+                if b.is_set_bit_(i) {
+                    cur *= pre.clone();
+                }
+            });
+
+            cur
+        }
+    }
+    
+    /// (self ^ b) mod n, self ^ b if n == 0
+    /// 
+    /// (a*b) mod c = ((a mod c) * (b mod c)) mod c
+    pub fn pow_mod(&self, b: Nat, n: Nat) -> Nat {
+        if self.is_nan() || b.is_nan() || n.is_nan() { return Nat::nan(); }
+        
+        if n == 0u32 {
+            self.pow(b)
+        } else if n == 1u32 {
+            Nat::from(0u32)
+        } else {
+            // 反复平方法
+            let mut d = Nat::from(1u32);
+            let sm = self.clone() % n.clone();
+            (0..b.bits_len()).rev().for_each(|i| {
+                d *= d.clone();
+                d %= n.clone();
+                if b.is_set_bit_(i) {
+                    d *= sm.clone();
+                    d %= n.clone();
+                }
+            });
+            d.clone()
+        }
     }
 }
 
@@ -535,10 +553,10 @@ impl Default for Nat {
     }
 }
 
-nat_from_basic!(u8, u16, u32, u64, u128);
+nat_from_basic!(u8, u16, u32, u64, u128, usize);
 
 impl From<Vec<u32>> for Nat {
-    /// little endian
+    /// lower dword first, byte word following the system
     fn from(x: Vec<u32>) -> Self {
         let mut x = x;
         Self::trim_head_zero_(&mut x);
@@ -547,13 +565,17 @@ impl From<Vec<u32>> for Nat {
     }
 }
 
+impl From<&Vec<u32>> for Nat {
+    /// lower dword first, byte word following the system
+    fn from(x: &Vec<u32>) -> Self {
+        Self::from(x.clone())
+    }
+}
+
 impl From<&[u32]> for Nat {
-    /// little endian
+    /// lower dword first, byte word following the system
     fn from(x: &[u32]) -> Self {
-        let mut x = x.to_vec();
-        Self::trim_head_zero_(&mut x);
-        
-        Nat {nat: Rc::new(Cell::new(x))}
+        Self::from(x.to_vec())
     }
 }
 
@@ -564,18 +586,31 @@ impl From<&[u8]> for Nat {
         let mut v = Vec::with_capacity((x.len() + MASK) >> 2);
         let mut tmp = 0;
         x.iter().enumerate().for_each(|(i, &ele)| {
-            if (i & MASK) == 0 {
-                if i > MASK {
-                    v.push(tmp);
-                }
-                tmp = ele as u32;
-            } else {
-                tmp += (ele as u32) << ((i & MASK) << 3);
+            tmp += (ele as u32) << ((i & MASK) << 3);
+            if (i & MASK) == 3 {
+                v.push(tmp);
+                tmp = 0;
             }
         });
         
+        if tmp > 0 {v.push(tmp);}
+        else { if !x.is_empty() {v.push(tmp);}}
+        
         Self::trim_head_zero_(&mut v);
         Nat {nat: Rc::new(Cell::new(v))}
+    }
+}
+
+impl From<Vec<u8>> for Nat {
+    /// little endian
+    fn from(x: Vec<u8>) -> Self {
+        Nat::from(x.as_slice())
+    }
+}
+
+impl From<&Vec<u8>> for Nat {
+    fn from(x: &Vec<u8>) -> Self {
+        Nat::from(x.as_slice())
     }
 }
 
@@ -597,7 +632,7 @@ impl FromStr for Nat {
     }
 }
 
-nat_fmt!((Binary, "{:032b}"), (LowerHex, "{:08x}"), (Debug, "{:08x}"), (UpperHex, "{:08X}"));
+nat_fmt!((Binary, "{:032b}", "0b"), (LowerHex, "{:08x}", "0x"), (Debug, "{:08x}", "0x"), (UpperHex, "{:08X}", "0X"));
 
 impl Octal for Nat {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -605,54 +640,62 @@ impl Octal for Nat {
             return write!(f, "{}", "NaN");
         }
 
-        let mut nat_str = Vec::with_capacity(self.num() * 11);
+        let mut nat_str = String::with_capacity(self.num() * 11);
 
-        let mut pre = 0u32;
-        for (i, &ele) in self.as_vec().iter().enumerate() {
+        let mut pre = 0;
+        for (i, &ele) in self.iter().enumerate() {
             let tmp = match i % 3 {
                 0 => {
-                    (ele, ele >> 30)
+                    (ele, (ele >> 30) as u8)
                 },
                 1 => {
-                    let val = ((ele & 0x1) << 2) | pre;
-                    let s = format!("{:o}", val);
-                    nat_str.push(s);
-                    (ele >> 1, ele >> 31)
+                    let val = ((((ele & 0x1) << 2) as u8) | pre) + b'0';
+                    nat_str.push(val as char);
+                    (ele >> 1, (ele >> 31) as u8)
                 },
                 _ => {
-                    let val = ((ele & 0x3) << 1) | pre;
-                    let s = format!("{:o}", val);
-                    nat_str.push(s);
+                    let val = ((((ele & 0x3) << 1) as u8) | pre) + b'0';
+                    nat_str.push(val as char);
                     (ele >> 2, 0)
                 },
             };
             
             pre = tmp.1;
             for idx in 0..10u32 {
-                let val = (tmp.0 >> (idx * 3)) & 0x7u32;
-                let s = format!("{:o}", val);
-                nat_str.push(s);
+                let val = (((tmp.0 >> (idx * 3)) & 0x7u32) as u8) + b'0';
+                nat_str.push(val as char);
             }
         }
 
-        if pre > 0 {
-            let s = format!("{:o}", pre);
-            nat_str.push(s);
+        if pre > 0 { nat_str.push((pre + b'0') as char);}
+        let nat_str: String = nat_str.chars().rev().collect();
+        let (nat, prefix) = (nat_str.trim_start_matches('0'), if f.alternate() {"0o"} else {""});
+        
+        if nat.is_empty() && self.num() > 0 {
+            write!(f, "{}{}", prefix, 0)
+        } else {
+            write!(f, "{}{}", prefix, nat)
         }
+    }
+}
 
-        match nat_str.last_mut() {
-            Some(x) => {
-                let mut y = String::with_capacity(x.len());
-                y.push_str(x.as_str().trim_start_matches('0'));
-                x.clear();
-                x.push_str(y.as_str());
-            },
-            None => {},
+impl Display for Nat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_nan() {
+            return write!(f, "{}", "NaN");
         }
-
+        let (zero, ten) = (Nat::from(0u8), Nat::from(10u8));
+        let mut nat_str = Vec::with_capacity(self.bits_len() >> 3);
+        
+        let mut nat = self.deep_clone();
+        while nat != zero {
+            let rem = nat.clone() % ten.clone();
+            nat /= ten.clone();
+            let val = rem.as_vec().first().unwrap();
+            nat_str.push(format!("{}", val));
+        }
         nat_str.reverse();
-        let s = nat_str.as_slice().join("");
-        write!(f, "{}", s)
+        write!(f, "{}", nat_str.join(""))
     }
 }
 
@@ -666,7 +709,7 @@ impl PartialEq for Nat {
     }
 }
 
-nat_eq_basic!(u8, u16, u32, u64, u128);
+nat_eq_basic!(u8, u16, u32, u64, u128, usize);
 
 impl PartialOrd for Nat {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -679,7 +722,7 @@ impl PartialOrd for Nat {
         } else if self.num() > other.num() {
             Some(Ordering::Greater)
         } else {
-            for (&a, &b) in self.iter().zip(other.iter()) {
+            for (&a, &b) in self.iter().rev().zip(other.iter().rev()) {
                 if a < b {
                     return Some(Ordering::Less);
                 } else if a > b {
@@ -691,7 +734,7 @@ impl PartialOrd for Nat {
     }
 }
 
-nat_ord_basic!(u8, u16, u32, u64, u128);
+nat_ord_basic!(u8, u16, u32, u64, u128, usize);
 
 nat_arith_ops!((Nat, Add, AddAssign, add, add_assign, add_inner, |rhs: &Nat| {rhs.is_nan()}),
     (Nat, Sub, SubAssign, sub, sub_assign, sub_inner, |rhs: &Nat| {rhs.is_nan()}),
