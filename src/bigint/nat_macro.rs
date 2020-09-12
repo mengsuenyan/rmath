@@ -1,5 +1,4 @@
 
-#[macro_export]
 macro_rules! nat_from_basic {
     ($type: ty) => {
         impl From<$type> for Nat {
@@ -7,16 +6,7 @@ macro_rules! nat_from_basic {
                 if std::mem::size_of::<$type>() <= std::mem::size_of::<u32>() {
                     Nat {nat: Rc::new(Cell::new(vec![x as u32]))}
                 } else {
-                    let (mut v, mut arr) = (Vec::new(), [0;4]);
-                    const MASK: usize = 3;
-                    for (i, &ele) in x.to_le_bytes().iter().enumerate() {
-                        if (MASK & i) == 0 && i > 3 {
-                            v.push(u32::from_le_bytes(arr));
-                        }
-                        arr[MASK & i] = ele;
-                    }
-                    v.push(u32::from_le_bytes(arr));
-                    Nat {nat: Rc::new(Cell::new(v))}
+                    Nat::from(x.to_le_bytes().as_ref())
                 }
             }
         }
@@ -29,31 +19,39 @@ macro_rules! nat_from_basic {
 }
 
 macro_rules! nat_fmt {
-    (($trait_name: ident, $fmt_str: literal)) => {
+    (($trait_name: ident, $fmt_str: literal, $prefix: literal)) => {
         impl $trait_name for Nat {
             fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
                 if self.is_nan() {
                     return write!(f, "{}", "NaN");
                 }
                 
-                let mut nat: Vec<String> = self.as_vec().iter().rev().map(|&x| {format!($fmt_str, x)}).collect();
+                let mut nat: Vec<String> = self.iter().rev().map(|&x| {format!($fmt_str, x)}).collect();
+                let len = nat.len();
                 match nat.first_mut() {
                     Some(x) => {
                         let mut y = String::with_capacity(x.len());
                         y.push_str(x.trim_start_matches('0'));
                         x.clear();
-                        x.push_str(y.as_str());
+                        if y.is_empty() && len == 1 {
+                            x.push('0');
+                        } else {
+                            x.push_str(y.as_str());
+                        }
                     }
                     None => {},
+                }
+                if f.alternate() {
+                    nat.insert(0, $prefix.to_string());
                 }
                 write!(f, "{}", nat.join(""))
             }
         }
     };
     
-    (($trait_name0: ident, $fmt_str0: literal), $(($trait_name1: ident, $fmt_str1: literal)),+) => {
-        nat_fmt!(($trait_name0, $fmt_str0));
-        nat_fmt!($(($trait_name1, $fmt_str1)),+);
+    (($trait_name0: ident, $fmt_str0: literal, $prefix0: literal), $(($trait_name1: ident, $fmt_str1: literal, $prefix1: literal)),+) => {
+        nat_fmt!(($trait_name0, $fmt_str0, $prefix0));
+        nat_fmt!($(($trait_name1, $fmt_str1, $prefix1)),+);
     }
 }
 
@@ -108,7 +106,8 @@ macro_rules! nat_arith_ops {
                 if self.is_nan() || $rhs_is_nan(&rhs) {
                     self.clear();
                 } else {
-                   let x = self.$fn_inner_name(&rhs);
+                   let mut x = self.$fn_inner_name(&rhs);
+                   Nat::trim_head_zero_(&mut x);
                    self.clear();
                    self.as_mut_vec().extend_from_slice(x.as_slice());
                 }
