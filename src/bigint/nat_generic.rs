@@ -77,4 +77,35 @@ impl Nat {
     pub(super) fn sub_inner(&self, rhs: &Self) -> Vec<u32> {
         self.sub_inner_with_sign(rhs).0
     }
+
+    pub(super) fn add_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        let mut v = Vec::with_capacity(self.num());
+        let mut c = *rhs;
+        self.iter().for_each(|&x| {
+            let (y, isc) = x.overflowing_add(c);
+            v.push(y);
+            c = if isc {1} else {0};
+        });
+
+        if c > 0 {v.push(c);}
+
+        v
+    }
+
+    pub(super) fn sub_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        if self > rhs {
+            let mut v = Vec::with_capacity(self.num());
+            let mut c = *rhs;
+            self.iter().for_each(|&a| {
+                let (x, isc) = a.overflowing_sub(c);
+                v.push(x);
+                c = if isc {1} else {0}
+            });
+            v
+        } else {
+            vec![rhs - self.as_vec().first().unwrap()]
+        }
+    }
+
 }
+

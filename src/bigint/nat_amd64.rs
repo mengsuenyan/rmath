@@ -69,4 +69,40 @@ impl Nat {
     pub(super) fn sub_inner(&self, rhs: &Self) -> Vec<u32> {
         self.sub_inner_with_sign(rhs).0
     }
+
+    pub(super) fn add_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        unsafe {self.add_inner_basic_by_adcx(*rhs)}
+    }
+    
+    unsafe  fn add_inner_basic_by_adcx(&self, rhs: u32) -> Vec<u32> {
+        let mut v = Vec::with_capacity(self.num());
+        let (mut c, mut out) = (0, rhs);
+        self.iter().for_each(|&x| {
+            c = march::_addcarryx_u32(c, x, out, &mut out);
+            v.push(out);
+            out = 0;
+        });
+
+        if c > 0 {v.push(c as u32);}
+        v
+    }
+
+    pub(super) fn sub_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        if self > rhs {
+            unsafe {self.sub_inner_basic_by_sbb(*rhs)}
+        } else {
+            vec![rhs - self.as_vec().first().unwrap()]
+        }
+    }
+    
+    unsafe fn sub_inner_basic_by_sbb(&self, rhs: u32) -> Vec<u32> {
+        let mut v = Vec::with_capacity(self.num());
+        let (mut c, mut out) = (0, rhs);
+        self.iter().for_each(|&x| {
+            c = march::_subborrow_u32(c, x, out, &mut out);
+            v.push(out);
+            out = 0;
+        });
+        v
+    }
 }

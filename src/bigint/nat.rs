@@ -456,6 +456,59 @@ impl Nat {
         v
     }
     
+    pub(super) fn mul_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        let cp: Vec<u64> = self.iter().map(|&i| {(i as u64) * (*rhs as u64)}).collect();
+        let mut v = Vec::with_capacity(cp.len() + 1);
+        let mut pre = 0;
+        
+        const MASK: u64 = u32::MAX as u64;
+        cp.iter().for_each(|&x| {
+            let val = (x & MASK) + pre;
+            v.push((val & MASK) as u32);
+            pre = (val >> 32) + (x >> 32);
+        });
+        
+        if pre > MASK {v.push((pre & MASK) as u32); v.push((pre >> 32) as u32);}
+        else if pre > 0 {v.push(pre as u32);}
+        
+        v
+    }
+    
+    pub(super) fn div_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        assert_ne!(rhs, &0, "divisor cannot be the 0");
+        if self < rhs {
+            return vec![0];
+        }
+        
+        let mut pre = 0;
+        let mut v = Vec::with_capacity(self.num());
+        let rhs = (*rhs) as u64;
+        
+        self.iter().rev().for_each(|&x| {
+            let val = (pre << 32) + (x as u64);
+            v.push((val / rhs) as u32);
+            pre = val % rhs;
+        });
+        
+        v.reverse();
+        v
+    }
+    
+    pub(super) fn rem_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+        assert_ne!(rhs, &0, "modulus cannot be the 0");
+        if self < rhs {
+            return self.to_vec();
+        }
+        let mut pre = 0;
+        let rhs = (*rhs) as u64;
+        self.iter().rev().for_each(|&x| {
+            let val = (pre << 32) + (x as u64);
+            pre = val % rhs;
+        });
+        
+        vec![pre as u32]
+    }
+    
     pub(super) fn not_inner(&self) -> Vec<u32> {
         let mut v = Vec::with_capacity(self.num());
         
@@ -476,7 +529,7 @@ impl Nat {
         Self::trim_head_zero_(&mut v);
         v
     }
-    
+
     #[inline]
     pub(super) fn nan() -> Nat {
         Nat::from(Vec::<u32>::new())
@@ -745,7 +798,12 @@ nat_arith_ops!((Nat, Add, AddAssign, add, add_assign, add_inner, |rhs: &Nat| {rh
     (Nat, Mul, MulAssign, mul, mul_assign, mul_inner, |rhs: &Nat| {rhs.is_nan()}),
     (Nat, BitAnd, BitAndAssign, bitand, bitand_assign, bitand_inner, |rhs: &Nat| {rhs.is_nan()}),
     (Nat, BitOr, BitOrAssign, bitor, bitor_assign, bitor_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, BitXor, BitXorAssign, bitxor, bitxor_assign, bitxor_inner, |rhs: &Nat| {rhs.is_nan()})
+    (Nat, BitXor, BitXorAssign, bitxor, bitxor_assign, bitxor_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (u32, Add, AddAssign, add, add_assign, add_inner_basic, |_rhs: &u32| {false}),
+    (u32, Sub, SubAssign, sub, sub_assign, sub_inner_basic, |_rhs: &u32| {false}),
+    (u32, Mul, MulAssign, mul, mul_assign, mul_inner_basic, |_rhs: &u32| {false}),
+    (u32, Div, DivAssign, div, div_assign, div_inner_basic, |_rhs: &u32| {false}),
+    (u32, Rem, RemAssign, rem, rem_assign, rem_inner_basic, |_rhs: &u32| {false})
     );
 
 impl Not for Nat {
