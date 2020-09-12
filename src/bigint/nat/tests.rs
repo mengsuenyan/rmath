@@ -173,9 +173,9 @@ fn nat_sub() {
     let sub = Nat::from_str("0xfffffffffffffffffffffffffffffffffff32222221ef9992f22222348ffffffcdddddde68afcb7a6cfba7cf98fdfb").unwrap();
     assert_eq!(l1.clone() - l2.clone(), sub);
     assert_eq!(l2.clone() - l1.clone(), sub);
-    // let l1 = Nat::from_str("0x32f3289577420805237534573").unwrap();
-    // let l2 = Nat::from(u32::max_value());
-    // assert_eq!(l1.clone() - l2.clone(), l1.clone() - u32::max_value());
+    let l1 = Nat::from_str("0x32f3289577420805237534573").unwrap();
+    let l2 = Nat::from(u32::max_value());
+    assert_eq!(l1.clone() - l2.clone(), l1.clone() - u32::max_value());
 }
 
 #[test]
@@ -190,6 +190,10 @@ fn nat_add() {
         l1.clone() + Nat::from(1u32),
         Nat::from_str("0x1ffffffffffffffffffffffffffffffff").unwrap()
     );
+    assert_eq!(
+        l1.clone() + 1u32,
+        Nat::from_str("0x1ffffffffffffffffffffffffffffffff").unwrap()
+    );
     let l1 = Nat::from_str("0xfffffffffffffffffffffffffffffffffff3222222222222222222234900000000000000ffffffffffffffffffffff").unwrap();
     let l2 = Nat::from_str("0xff9000000000000000000000322222222222223209053065839583093285340530493058304593058390584").unwrap();
     let sum = Nat::from_str("0x10000000ff900000000000000000000032215444444444542b275287b82583093285340540493058304593058390583").unwrap();
@@ -199,6 +203,7 @@ fn nat_add() {
     let s2 = Nat::from(std::u8::MAX);
     let sum = Nat::from_str("0x1fe").unwrap();
     assert_eq!(s1.clone() + s2.clone(), sum);
+    assert_eq!(s1.clone() + (u8::MAX as u32), sum);
 
     let nan = Nat::from(Vec::<u32>::new());
     assert_eq!(format!("{:x}", nan.clone() + l1.clone()), format!("{:x}", nan));
@@ -227,34 +232,48 @@ fn nat_mul() {
     let l2 = Nat::from_str("0xf329053910428502fabcd9230494035242429890eacb").unwrap();
     let m = Nat::from_str("0xec882250900ba90c2088a4a5ee549ecc5152d7a50683a82daa24e03f6d6409468abf1ce1f01d9be845021f48b").unwrap();
     assert_eq!(l1 * l2, m);
+    assert_eq!(Nat::from(u128::MAX) * Nat::from(u32::MAX), Nat::from(u128::MAX) * u32::MAX);
+    assert_eq!(Nat::from(u128::MAX / 5) * Nat::from(u32::MAX), Nat::from(u128::MAX / 5) * u32::MAX);
+    let l = Nat::from_str("0x123507af44107cfc63175d6cc354e6093bfeb7b0f5145641a0bc284bf1784696cc9791b18ab54de0114f6581d68041b66c7db").unwrap();
+    assert_eq!( l.clone() * Nat::from(u32::MAX), l.clone() * u32::MAX);
+    assert_eq!( l.clone() * Nat::from(u32::MAX / 77), l.clone() * (u32::MAX/77));
 }
 
 #[test]
 fn nat_div() {
     let l1 = Nat::from(100u8);
     let l2 = Nat::from(10u8);
-    assert_eq!(l1 / l2, Nat::from(10u8));
+    assert_eq!(l1.clone() / l2.clone(), Nat::from(10u8));
+    assert_eq!(l1 / 10u32, Nat::from(10u8));
+    assert_eq!(l2 / 100u32, Nat::from(0u8));
     let l1 = Nat::from_str("0xfffffffffff32908329058205820").unwrap();
     let l2 = Nat::from_str("0xff").unwrap();
     let quo = Nat::from_str("0x10101010100f41d2557e84060b8").unwrap();
     assert_eq!(l1.clone() / l2.clone(), quo);
+    assert_eq!(l1.clone() / 0xffu32, quo);
     assert_eq!(l2 / l1, Nat::from(0u8));
     let l1 = Nat::from_str("0x39025820857032850384502853503850325fa3242de121").unwrap();
     let l2 = Nat::from_str("0x2048537058358afedead392582075275").unwrap();
     let quo = Nat::from_str("0x1c414f70ec1f027").unwrap();
+    assert_eq!(l1.clone() / Nat::from(u32::MAX), l1.clone() / u32::MAX);
+    assert_eq!(l1.clone() / Nat::from(u32::MAX / 101), l1.clone() / (u32::MAX / 101));
     assert_eq!(l1 / l2, quo);
     let l1 = Nat::from(0x1ad7f29abcau128);
-    assert_eq!(l1 / Nat::from(10u8), Nat::from(184467440737u128));
+    assert_eq!(l1.clone() / Nat::from(10u8), Nat::from(184467440737u128));
+    assert_eq!(l1.clone() / 10, Nat::from(184467440737u128));
 }
 
 #[test]
 fn nat_rem() {
     let l1 = Nat::from_str("0xffffffffffffff000000000000").unwrap();
     let l2 = Nat::from(255u32);
-    assert_eq!(l1 % l2, Nat::from(0u8));
+    assert_eq!(l1.clone() % l2, Nat::from(0u8));
+    assert_eq!(l1 % 255u32, Nat::from(0u8));
     let l1 = Nat::from_str("0x39025820857032850384502853503850325fa3242de121").unwrap();
     let l2 = Nat::from_str("0x2048537058358afedead392582075275").unwrap();
     let rem = Nat::from_str("0xab9de6183b632a33dc2601ae78da14e").unwrap();
+    assert_eq!(l1.clone() % Nat::from(u32::MAX), l1.clone() % u32::MAX);
+    assert_eq!(l1.clone() % Nat::from(u32::MAX / 217), l1.clone() % (u32::MAX / 217));
     assert_eq!(l1 % l2, rem);
     let l1 = Nat::from_str("0xfffffffffff32908329058205820").unwrap();
     let l2 = Nat::from_str("0xff").unwrap();
@@ -262,6 +281,7 @@ fn nat_rem() {
     assert_eq!(l1.clone() % l2.clone(), quo);
     assert_eq!(l1.clone() % Nat::from(255u32), 0xd8u32);
     assert_eq!(l1.clone() % Nat::from(255u64), 0xd8u64);
+    assert_eq!(l1.clone() % 255u32, 0xd8u32);
 }
 
 #[test]
