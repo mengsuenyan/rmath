@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter, Display};
 use std::error::Error;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum RandErrKind {
     NoNewRandSeedGen,
     NoNewRandNumberGen,
