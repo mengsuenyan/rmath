@@ -9,8 +9,8 @@ use std::arch::x86 as march;
 pub struct DefaultRand {}
 
 impl DefaultRand {
-    pub fn new<Sd: Seed>(_sd: &impl Seed) -> Self {
-        DefaultRand {}
+    pub fn new<Sd: Seed>(_sd: &impl Seed) -> Result<Self> {
+        Ok(DefaultRand {})
     }
     
     #[target_feature(enable = "rdrand")]

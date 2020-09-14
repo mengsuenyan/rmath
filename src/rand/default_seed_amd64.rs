@@ -9,8 +9,8 @@ use std::arch::x86 as march;
 pub struct DefaultSeed {}
 
 impl DefaultSeed {
-    pub fn new() -> Self {
-        DefaultSeed{}
+    pub fn new() -> Result<Self> {
+        Ok(DefaultSeed{})
     }
     
     #[target_feature(enable = "rdseed")]
