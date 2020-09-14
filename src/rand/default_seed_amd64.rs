@@ -1,18 +1,22 @@
-use crate::rand::{Seed, RandError, RandErrKind, Result};
+use crate::rand::{Seed, RandError, RandErrKind, Result, PrimitiveType};
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64 as march;
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86 as march;
+use std::marker::PhantomData;
 
-pub struct DefaultSeed {}
+#[derive(Clone)]
+pub struct DefaultSeed<T> {
+    ph: PhantomData<T>,
+}
 
-impl DefaultSeed {
+impl<T: PrimitiveType> DefaultSeed<T> {
     pub fn new() -> Result<Self> {
-        Ok(DefaultSeed{})
+        Ok(DefaultSeed {ph: PhantomData})
     }
-    
+
     #[target_feature(enable = "rdseed")]
     unsafe fn rdseed_u32(&self) -> Result<u32> {
         let mut out = 0;
@@ -46,14 +50,34 @@ impl DefaultSeed {
             Err(RandError::new(RandErrKind::NoNewRandSeedGen, ""))
         }
     }
+    
+    fn rdseed_usize(&self) -> Result<usize> {
+        #[cfg(target_pointer_width = "32")]
+            unsafe {self.rdseed_u32().map(|x| {x as usize}) }
+
+        #[cfg(target_pointer_width = "64")]
+            unsafe {self.rdseed_u64().map(|x| {x as usize})}
+    }
 }
 
-impl Seed for DefaultSeed {
-    fn seed_u32(&self) -> Result<u32> {
-        unsafe {self.rdseed_u32()}
+impl Seed<u32> for DefaultSeed<u32> {
+    fn seed(&self) -> Result<u32> {
+        unsafe {
+            self.rdseed_u32()
+        }
     }
+}
 
-    fn seed_u64(&self) -> Result<u64> {
-        unsafe {self.rdseed_u64()}
+impl Seed<u64> for DefaultSeed<u64> {
+    fn seed(&self) -> Result<u64> {
+        unsafe {
+            self.rdseed_u64()
+        }
+    }
+}
+
+impl Seed<usize> for DefaultSeed<usize> {
+    fn seed(&self) -> Result<usize> {
+        self.rdseed_usize()
     }
 }

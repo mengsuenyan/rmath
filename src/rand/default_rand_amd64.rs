@@ -1,16 +1,19 @@
-use crate::rand::{Source, Seed, RandError, RandErrKind, Result};
+use crate::rand::{Source, Seed, RandError, RandErrKind, Result, PrimitiveType};
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64 as march;
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86 as march;
+use std::marker::PhantomData;
 
-pub struct DefaultRand {}
+pub struct DefaultRand<T> {
+    ph: PhantomData<T>
+}
 
-impl DefaultRand {
-    pub fn new<Sd: Seed>(_sd: &Sd) -> Result<Self> {
-        Ok(DefaultRand {})
+impl<T: PrimitiveType> DefaultRand<T> {
+    pub fn new<Sd: Seed<T>>(_sd: &Sd) -> Result<Self> {
+        Ok(DefaultRand {ph: PhantomData})
     }
     
     #[target_feature(enable = "rdrand")]
@@ -44,18 +47,46 @@ impl DefaultRand {
             Err(RandError::new(RandErrKind::NoNewRandNumberGen, ""))
         }
     }
+    
+    fn gen_usize(&mut self) -> Result<usize> {
+        #[cfg(target_pointer_width = "32")]
+            unsafe {self.gen_u32().map(|x| {x as usize}) }
+
+        #[cfg(target_pointer_width = "64")]
+            unsafe {self.gen_u64().map(|x| {x as usize})}
+    }
 }
 
-impl Source for DefaultRand {
-    fn gen_u32(&mut self) -> Result<u32> {
-        unsafe {self.gen_u32()}
+impl Source<u32> for DefaultRand<u32> {
+    fn gen(&mut self) -> Result<u32> {
+        unsafe {
+            self.gen_u32()
+        }
     }
 
-    fn reset<Sd: Seed>(&mut self, _sd: &Sd) -> Result<()> {
+    fn reset<Sd: Seed<u32>>(&mut self, _sd: &Sd) -> Result<()> {
         Ok(())
     }
+}
 
-    fn gen_u64(&mut self) -> Result<u64> {
-        unsafe {self.gen_u64()}
+impl Source<u64> for DefaultRand<u64> {
+    fn gen(&mut self) -> Result<u64> {
+        unsafe {
+            self.gen_u64()
+        }
+    }
+
+    fn reset<Sd: Seed<u64>>(&mut self, _sd: &Sd) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl Source<usize> for DefaultRand<usize> {
+    fn gen(&mut self) -> Result<usize> {
+        self.gen_usize()
+    }
+
+    fn reset<Sd: Seed<usize>>(&mut self, _sd: &Sd) -> Result<()> {
+        Ok(())
     }
 }
