@@ -32,13 +32,10 @@ pub trait Seed {
 
 /// The trait for random number
 pub trait Source {
-    /// this will be reset the internal state of the Source Instance
-    fn set_seed<Sd: Seed>(&mut self, sd: &Sd) -> Result<()>;
-    
-    /// reset the internal state
-    fn reset(&mut self) -> Result<()>;
-    
     fn gen_u32(&mut self) -> Result<u32>;
+    
+    /// reset internal state, `sd` will generate new seed as the `self`'s initial state
+    fn reset<Sd: Seed>(&mut self, sd: &Sd) -> Result<()>;
 
     fn gen_u64(&mut self) -> Result<u64> {
         match self.gen_u32() {
@@ -64,7 +61,11 @@ pub trait Source {
     }
 }
 
+#[macro_use]
 mod linear_congruential_rand;
+pub use linear_congruential_rand::{LinearCongruentialRand};
+
+mod mersenne_twister_rand;
 
 mod default_seed;
 
