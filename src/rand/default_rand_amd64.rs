@@ -9,7 +9,7 @@ use std::arch::x86 as march;
 pub struct DefaultRand {}
 
 impl DefaultRand {
-    pub fn new<Sd: Seed>(_sd: &impl Seed) -> Result<Self> {
+    pub fn new<Sd: Seed>(_sd: &Sd) -> Result<Self> {
         Ok(DefaultRand {})
     }
     
@@ -47,16 +47,12 @@ impl DefaultRand {
 }
 
 impl Source for DefaultRand {
-    fn set_seed<Sd: Seed>(&mut self, _sd: &Sd) -> Result<()> {
-        Ok(())
-    }
-
-    fn reset(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     fn gen_u32(&mut self) -> Result<u32> {
         unsafe {self.gen_u32()}
+    }
+
+    fn reset<Sd: Seed>(&mut self, _sd: &Sd) -> Result<()> {
+        Ok(())
     }
 
     fn gen_u64(&mut self) -> Result<u64> {
