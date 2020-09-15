@@ -6,6 +6,7 @@ pub enum RandErrKind {
     NoNewRandSeedGen,
     NoNewRandNumberGen,
     DivisorIsZero,
+    InvalidRngPara,
 }
 
 impl Debug for RandErrKind {
@@ -14,6 +15,7 @@ impl Debug for RandErrKind {
             RandErrKind::NoNewRandSeedGen => write!(f, "{}", "no new rand seed generated"),
             RandErrKind::NoNewRandNumberGen => write!(f, "{}", "no new rand number generated"),
             RandErrKind::DivisorIsZero => write!(f, "{}", "divisor is zero"),
+            RandErrKind::InvalidRngPara => write!(f, "{}", "invalid random generator parameter"),
         }
     }
 }
