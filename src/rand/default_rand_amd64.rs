@@ -7,6 +7,7 @@ use std::arch::x86_64 as march;
 use std::arch::x86 as march;
 use std::marker::PhantomData;
 
+#[derive(Clone)]
 pub struct DefaultRand<T> {
     ph: PhantomData<T>
 }

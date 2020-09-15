@@ -6,6 +6,7 @@ use crate::rand::{PrimitiveType, Seed, Result, RandError, RandErrKind, Source};
 /// $$
 /// x_{n+1} = (a * x_n + c) \mod m
 /// $$
+#[derive(Clone)]
 pub struct LinearCongruentialRand<T> {
     a: T,
     c: T,
