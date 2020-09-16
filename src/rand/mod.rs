@@ -59,9 +59,14 @@ pub use mersenne_twister_rand::MersenneTwisterRand;
 mod lagged_fibonacci_rand;
 pub use lagged_fibonacci_rand::LaggedFibonacciRand;
 
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod default_seed;
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub use default_seed::DefaultSeed;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod default_seed_amd64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use default_seed_amd64::DefaultSeed;
 
 
