@@ -63,16 +63,20 @@ pub use lagged_fibonacci_rand::LaggedFibonacciRand;
 mod default_seed;
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 pub use default_seed::DefaultSeed;
-
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub use default_rand_amd64::DefaultRand;
+mod default_seed_amd64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use default_seed_amd64::DefaultSeed;
 
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod default_rand;
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 pub use default_rand::DefaultRand;
-
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod default_rand_amd64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use default_rand_amd64::DefaultRand;
 
+mod crypto_rand_amd64;
+pub use crypto_rand_amd64::CryptoRand;
