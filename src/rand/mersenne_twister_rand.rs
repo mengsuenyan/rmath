@@ -63,15 +63,15 @@ impl<T> MersenneTwisterRand<T>
         } else if l >= w {
             Err(RandError::new(RandErrKind::InvalidRngPara, "l must be less than w"))
         } else if a > w.mask() {
-            Err(RandError::new(RandErrKind::InvalidRngPara, "a must be less than ((1<<w) - 1)"))
+            Err(RandError::new(RandErrKind::InvalidRngPara, "a must be less than or equal to ((1<<w) - 1)"))
         } else if u_d.1 > w.mask() {
-            Err(RandError::new(RandErrKind::InvalidRngPara, "d must be less than ((1<<w) - 1)"))
+            Err(RandError::new(RandErrKind::InvalidRngPara, "d must be less than  or equal to ((1<<w) - 1)"))
         } else if s_b.1 > w.mask() {
-            Err(RandError::new(RandErrKind::InvalidRngPara, "b must be less than ((1<<w) - 1)"))
+            Err(RandError::new(RandErrKind::InvalidRngPara, "b must be less than  or equal to ((1<<w) - 1)"))
         } else if t_c.1 > w.mask() {
-            Err(RandError::new(RandErrKind::InvalidRngPara, "c must be less than ((1<<w) - 1)"))
+            Err(RandError::new(RandErrKind::InvalidRngPara, "c must be less than  or equal to ((1<<w) - 1)"))
         } else if f > w.mask() {
-            Err(RandError::new(RandErrKind::InvalidRngPara, "f must be less than ((1<<w) - 1)"))
+            Err(RandError::new(RandErrKind::InvalidRngPara, "f must be less than  or equal to ((1<<w) - 1)"))
         } else {
             sd.seed().map(|x| {
                 Self {
@@ -97,84 +97,13 @@ impl<T> MersenneTwisterRand<T>
     }
 }
 
-// impl MersenneTwisterRand<u32> {
-//     fn check_init(&mut self) {
-//         match self.seed {
-//             Err(seed) => {
-//                 let n = self.state_size as usize;
-//                 self.state.reserve(n.saturating_sub(self.state.capacity()));
-//                 let mut last = seed & self.word_size.mask();
-//                 self.state.push(last);
-//                 let n = n as u32;
-//                 (1..n).for_each(|i| {
-//                     last ^= last >> (self.word_size - 2);
-//                     last *= self.init_multiplier;
-//                     last += i;
-//                     last &= self.word_size.mask();
-//                     self.state.push(last);
-//                 });
-//                 self.idx = self.state_size;
-//                 self.seed = Ok(seed);
-//             },
-//             _ => {},
-//         }
-//     }
-//     
-//     fn gen_rand(&mut self) {
-//         let upper_mask: u32 = (!(u32::default())) << self.mask_bits;
-//         let lower_mask: u32 = !upper_mask;
-//         let k = (self.state_size - self.shift_size) as usize;
-//         (0..k).for_each(|i| {
-//             let y = (self.state[i] & upper_mask) | (self.state[i+1] & lower_mask);
-//             self.state[i] = (self.state[i+(self.shift_size as usize)] ^ (y >> 1)) ^
-//                 (if (y & 0x1) > 0 {self.xor_mask} else {0});
-//         });
-//         let n = (self.state_size - 1) as usize;
-//         let mut j = 0;
-//         (k..n).for_each(|i| {
-//             let y = (self.state[i] & upper_mask) | (self.state[i+1] & lower_mask);
-//             self.state[i] = self.state[j] ^ (y >> 1) ^ (if (y & 0x1) > 0 {self.xor_mask} else {0});
-//             j += 1;
-//         });
-//         
-//         let y = (self.state[n] & upper_mask) | (self.state[0] & lower_mask);
-//         self.state[n] = self.state[(self.shift_size as usize)- 1] ^ (y >> 1) ^ 
-//             (if (y & 0x1) > 0 {self.xor_mask} else {0});
-//         self.idx = 0;
-//     }
-// }
-// 
-// impl Source<u32> for MersenneTwisterRand<u32> {
-//     fn gen(&mut self) -> Result<u32> {
-//         self.check_init();
-//         
-//         if self.idx >= self.state_size {
-//             self.gen_rand();
-//         }
-//         let mut z = self.state[self.idx as usize];
-//         z ^= (z >> self.tempering_u) & self.tempering_d;
-//         z ^= (z >> self.tempering_s) & self.tempering_b;
-//         z ^= (z >> self.tempering_t) & self.tempering_c;
-//         z ^= z >> self.shift_l;
-//         
-//         self.idx += 1;
-//         Ok(z)
-//     }
-// 
-//     fn reset<Sd: Seed<u32>>(&mut self, sd: &Sd) -> Result<()> {
-//         sd.seed().map(|x| {
-//             self.seed = Err(x);
-//             self.check_init();
-//         })
-//     }
-// }
-
 macro_rules! mtr_impl {
     ($Type0: ty) => {
         impl MersenneTwisterRand<$Type0> {
             fn check_init(&mut self) {
                 match self.seed {
                     Err(seed) => {
+                        self.state.clear();
                         let n = self.state_size as usize;
                         self.state.reserve(n.saturating_sub(self.state.capacity()));
                         let mut last = seed & self.word_size.mask();
@@ -255,7 +184,7 @@ macro_rules! mt19937 {
     ($Sd: ident) => {
         rmath::rand::MersenneTwisterRand::new(&$Sd, 32u32, 624u32, 397u32, 31u32, 0x9908b0dfu32, 
                 (11u32, 0xffffffffu32), (7u32, 0x9d2c5680u32), (15u32, 0xefc60000u32),
-                 18u32, 1812433253u32);
+                 18u32, 1812433253u32)
     };
 }
 
@@ -266,6 +195,6 @@ macro_rules! mt19937_64 {
     ($Sd: ident) => {
         rmath::rand::MersenneTwisterRand::new(&$Sd, 64u64, 312u64, 156u64, 31u64, 0xb5026f5aa96619e9u64, 
                 (29u64, 0x5555555555555555u64), (17u64, 0x71d67fffeda60000u64), (37u64, 0xfff7eee000000000u64),
-                 43u64, 6364136223846793005u64);
+                 43u64, 6364136223846793005u64)
     };
 }
