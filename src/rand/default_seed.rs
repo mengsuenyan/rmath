@@ -1,10 +1,10 @@
+/// The DefaultSeed implement by the system time in the non-x86/x86_64 platform
+
 use std::marker::PhantomData;
 use crate::rand::{PrimitiveType, Result, Seed};
 use std::collections::hash_map::DefaultHasher;
 use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use std::hash::{Hash, Hasher};
-
-/// The DefaultSeed implement by the system time in the non-x86/x86_64 platform
 
 #[derive(Clone)]
 pub struct DefaultSeed<T> {
