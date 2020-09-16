@@ -55,6 +55,10 @@ pub use linear_congruential_rand::LinearCongruentialRand;
 mod mersenne_twister_rand;
 pub use mersenne_twister_rand::MersenneTwisterRand;
 
+#[macro_use]
+mod lagged_fibonacci_rand;
+pub use lagged_fibonacci_rand::LaggedFibonacciRand;
+
 mod default_seed;
 
 mod default_seed_amd64;
