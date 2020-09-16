@@ -7,15 +7,17 @@ pub enum RandErrKind {
     NoNewRandNumberGen,
     DivisorIsZero,
     InvalidRngPara,
+    InnerErr,
 }
 
 impl Debug for RandErrKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            RandErrKind::NoNewRandSeedGen => write!(f, "{}", "no new rand seed generated"),
-            RandErrKind::NoNewRandNumberGen => write!(f, "{}", "no new rand number generated"),
-            RandErrKind::DivisorIsZero => write!(f, "{}", "divisor is zero"),
-            RandErrKind::InvalidRngPara => write!(f, "{}", "invalid random generator parameter"),
+            RandErrKind::NoNewRandSeedGen => write!(f, "{}", "NoNewRandSeedGen"),
+            RandErrKind::NoNewRandNumberGen => write!(f, "{}", "NoNewRandNumberGen"),
+            RandErrKind::DivisorIsZero => write!(f, "{}", "DivisorIsZero"),
+            RandErrKind::InvalidRngPara => write!(f, "{}", "InvalidRngPara"),
+            RandErrKind::InnerErr => write!(f, "{}", "InnerErr"),
         }
     }
 }

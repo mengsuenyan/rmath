@@ -78,5 +78,13 @@ mod default_rand_amd64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use default_rand_amd64::DefaultRand;
 
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+mod crypto_rand;
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+pub use crypto_rand::CryptoRand;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod crypto_rand_amd64;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use crypto_rand_amd64::CryptoRand;
