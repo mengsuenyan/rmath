@@ -1,3 +1,5 @@
+/// The DefaultSeed implement by the rdseed instruction in the x86/x86_64 platform
+
 use crate::rand::{Seed, RandError, RandErrKind, Result, PrimitiveType};
 
 #[cfg(target_arch = "x86_64")]
