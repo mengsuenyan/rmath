@@ -47,6 +47,11 @@ pub trait Source<T: PrimitiveType> {
     fn reset<Sd: Seed<T>>(&mut self, sd: &Sd) -> Result<()>;
 }
 
+pub trait IterSource<T: PrimitiveType>: Source<T> {
+    fn iter_mut(&mut self) -> crate::rand::iter::Iter<'_, Self, T>
+        where Self: std::marker::Sized;
+}
+
 #[macro_use]
 mod iter;
 pub use iter::Iter;

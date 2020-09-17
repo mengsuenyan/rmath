@@ -40,8 +40,8 @@ impl<'a, T, P> Iterator for Iter<'a, T, P>
 
 macro_rules! iter_impl {
     ($SourceType0: ident, $Type0: ty) => {
-        impl $SourceType0<$Type0> {
-            pub fn iter_mut(&mut self) -> crate::rand::iter::Iter<'_, Self, $Type0> {
+        impl IterSource<$Type0> for $SourceType0<$Type0> {
+            fn iter_mut(&mut self) -> crate::rand::iter::Iter<'_, Self, $Type0> {
                 crate::rand::iter::Iter {
                     inner: self,
                     last_err: None,
