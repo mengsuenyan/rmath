@@ -1,6 +1,6 @@
 extern crate rmath;
 
-use rmath::rand::{DefaultSeed, DefaultRand, Seed, CryptoRand};
+use rmath::rand::{DefaultSeed, DefaultRand, Seed, CryptoRand, IterSource};
 
 fn main() {
     let s = DefaultSeed::<u32>::new().unwrap();
