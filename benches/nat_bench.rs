@@ -5,6 +5,7 @@ extern crate test;
 use test::Bencher;
 use rmath::bigint::Nat;
 use std::str::FromStr;
+use rmath::rand::{CryptoRand, DefaultSeed};
 
 #[bench]
 fn nat_mul(b: &mut Bencher) {
@@ -116,5 +117,24 @@ fn nat_pow_mod(b: &mut Bencher) {
         cases.iter().for_each(|&x| {
             let _m = Nat::from_str(x.0).unwrap().pow_mod(Nat::from_str(x.1).unwrap(), Nat::from_str(x.2).unwrap());
         });
+    });
+}
+
+#[bench]
+fn nat_random(b: &mut Bencher) {
+    let nat = Nat::from_str("2938462938472983472983659726349017249287491026512746239764525612965293865296239471239874193284792387498274256129746192347").unwrap();
+    let s = DefaultSeed::new().unwrap();
+    let mut rng = CryptoRand::new(&s).unwrap();
+    b.iter(|| {
+        let _r = nat.random(&mut rng);
+    });
+}
+
+#[bench]
+fn nat_shl(b: &mut Bencher) {
+    b.iter(|| {
+        let nat = Nat::from_str("11521922904531591643048817447554701904414021819823889996244743037378330903763518501116638828335352811871131385129455853417360623007349090150042001944696604737499160174391019030572483602867266711107136838523916077674888297896995042968746762200926853379").unwrap();
+        let _n = nat.clone() << 333usize;
+        let _n = nat >> 37;
     });
 }
