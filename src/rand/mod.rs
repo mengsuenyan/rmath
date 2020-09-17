@@ -48,16 +48,23 @@ pub trait Source<T: PrimitiveType> {
 }
 
 #[macro_use]
+mod iter;
+pub use iter::Iter;
+
+#[macro_use]
 mod linear_congruential_rand;
 pub use linear_congruential_rand::LinearCongruentialRand;
+iter_impl!(LinearCongruentialRand, u32, usize, u64);
 
 #[macro_use]
 mod mersenne_twister_rand;
 pub use mersenne_twister_rand::MersenneTwisterRand;
+iter_impl!(MersenneTwisterRand, u32, usize, u64);
 
 #[macro_use]
 mod lagged_fibonacci_rand;
 pub use lagged_fibonacci_rand::LaggedFibonacciRand;
+iter_impl!(LaggedFibonacciRand, u32, usize, u64);
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 mod default_seed;
@@ -77,6 +84,7 @@ pub use default_rand::DefaultRand;
 mod default_rand_amd64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use default_rand_amd64::DefaultRand;
+iter_impl!(DefaultRand, u32, usize, u64);
 
 
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -88,3 +96,4 @@ pub use crypto_rand::CryptoRand;
 mod crypto_rand_amd64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use crypto_rand_amd64::CryptoRand;
+iter_impl!(CryptoRand, u32, usize, u64);

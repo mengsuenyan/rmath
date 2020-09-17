@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use crate::rand::{Seed, PrimitiveType, Result, RandErrKind, RandError, Source};
 
-// #[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
 use crate::os::windows::bcrypt::{BCrypt, AlgorithmHandle, CNGAlgorithmIdentifier, AlgorithmHandleFlag};
 #[cfg(target_os = "linux")]
 use crate::os::linux::BCrypt;
