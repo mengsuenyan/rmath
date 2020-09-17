@@ -9,7 +9,10 @@ use std::arch::x86 as march;
 
 impl Nat {
     #[target_feature(enable = "avx2")]
-    unsafe fn mul_manuual_by_avx2(min: &[u32], max: &[u32]) -> Vec<u32> {
+    unsafe fn mul_manuual_by_avx2(&mut self, rhs: &Self) {
+        let lhs = self.deep_clone();
+        let (min, max, _) = Self::min_max(&lhs, rhs);
+        let (min, max) = (min.as_slice(), max.as_slice());
         let (minp, maxp) = (min.as_ptr(), max.as_ptr());
         let (minp, maxp): (*const i32, *const i32) = (transmute(minp), transmute(maxp));
         let (mut lpkg, mut rpkg) = (Vec::with_capacity(min.len()), Vec::with_capacity(max.len()));
@@ -53,7 +56,9 @@ impl Nat {
             r.push(tmp0.clone());
         }
         
-        let mut v = Vec::with_capacity(v_len);
+        let v = self.as_mut_vec();
+        v.reserve(v_len.overflowing_sub(self.num()).0);
+        v.clear();
         let mut pre = 0;
         const MASK: u64 = u32::MAX as u64;
         (0..v_len).for_each(|i| {
@@ -67,17 +72,21 @@ impl Nat {
         });
         
         if pre > 0 {v.push((pre & MASK) as u32);}
-        
-        v
+        self.trim_head_zero();
     }
     
-    pub(super) fn mul_inner(&self, max: &Self) -> Vec<u32> {
-        if self == &0u32 || max == &0u32 {vec![0]}
-        else if self == &1u32 {max.to_vec()}
-        else if max == &1u32 {self.to_vec()}
-        else {
-            let (min, max, _) = self.min_max(max);
-            unsafe {Nat::mul_manuual_by_avx2(min.as_slice(), max.as_slice())}
+    pub(super) fn mul_inner(&mut self, max: &Self) {
+        if self == &0u32 || max == &0u32 {self.clear(); self.as_mut_vec().push(0);}
+        else if self == &1u32 {
+            if self.as_vec().as_ptr() != max.as_vec().as_ptr() {
+                self.clear();
+                self.as_mut_vec().extend_from_slice(max.as_slice());
+            }
+        }
+        else if max != &1u32 {
+            unsafe {
+                self.mul_manuual_by_avx2(max);
+            }
         }
     }
 }

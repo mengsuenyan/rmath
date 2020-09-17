@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign, 
     Div, DivAssign, Mul, MulAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign,
     BitXor, BitXorAssign, Not, Rem, RemAssign};
+use crate::rand::IterSource;
 
 #[cfg(test)]
 mod tests;
@@ -31,11 +32,13 @@ impl Nat {
     pub(super) fn as_slice(&self) -> &[u32] {
         self.as_vec().as_slice()
     }
-    
+
+    #[allow(unused)]
     pub(super) fn to_vec(&self) -> Vec<u32> {
         self.as_vec().clone()
     }
-    
+
+    #[allow(unused)]
     pub(super) fn into_vec(self) -> Vec<u32> {
         self.nat.take()
     }
@@ -49,7 +52,6 @@ impl Nat {
         self.as_slice().iter()
     }
     
-    #[allow(unused)]
     pub(super) fn iter_mut(&self) -> std::slice::IterMut<'_, u32> {
         self.as_mut_slice().iter_mut()
     }
@@ -135,13 +137,8 @@ impl Nat {
         v.truncate(v.len() - i);
     }
 
-    #[allow(unused)]
     pub(super) fn trim_head_zero(&mut self) {
         Self::trim_head_zero_(self.as_mut_vec());
-    }
-    
-    pub(super) fn min_max_by_len<'a>(x: &'a[u32], y: &'a[u32]) -> (&'a[u32], &'a[u32]) {
-        if x.len() < y.len() {(x, y)} else {(y, x)}
     }
     
     pub(super) fn min_max<'a>(&'a self, other: &'a Self) -> (&'a Self, &'a Self, bool) {
@@ -290,8 +287,9 @@ impl Nat {
         if self.is_nan() || rhs.is_nan() {
             (Nat::default(), false)
         } else {
-            let x = self.sub_inner_with_sign(&rhs);
-            (Nat::from(x.0), x.1)
+            let mut nat = self.deep_clone();
+            let x = nat.sub_inner_with_sign(&rhs);
+            (nat, x)
         }
     }
     
@@ -302,213 +300,283 @@ impl Nat {
             self.clear();
             false
         } else {
-            let x = self.sub_inner_with_sign(&rhs);
-            self.clear();
-            self.as_mut_vec().extend_from_slice(x.0.as_slice());
-            x.1
+            self.sub_inner_with_sign(&rhs)
         }
     }
     
-    pub(super) fn shl_inner(&self, rhs: &usize) -> Vec<u32> {
-        let (num, nom) = (rhs >> 5, rhs & 31);
-        let mut v = Vec::with_capacity(num + self.num());
-        v.resize(num, 0);
-
-        let nom_c = 32 - nom;
-        if nom == 0 {
-            v.extend_from_slice(self.as_slice());
+    pub(super) fn partial_cmp_inner(&self, rhs: &Self) -> Ordering {
+        if self.num() < rhs.num() {
+            Ordering::Less
+        } else if self.num() > rhs.num() {
+            Ordering::Greater
         } else {
-            let mut pre = 0;
-            self.iter().for_each(|&a| {
-                let val = (a << nom) | pre;
-                pre = a >> nom_c;
-                v.push(val);
+            for (a, b) in self.iter().rev().zip(rhs.iter().rev()) {
+                if a < b {
+                    return Ordering::Less;
+                } else if a > b {
+                    return Ordering::Greater;
+                }
+            }
+            Ordering::Equal
+        }
+    }
+    
+    pub(super) fn shl_inner(&mut self, rhs: &usize) {
+        let rhs = *rhs;
+        let (num, nom) = (rhs >> 5, rhs & 31);
+        let v = self.as_mut_vec();
+        
+        if nom > 0 {
+            let (nom_c, mut pre) = (32 - nom, 0);
+            self.iter_mut().for_each(|a| {
+                let tmp = pre;
+                pre = (*a) >> nom_c;
+                *a = ((*a) << nom) | tmp;
             });
             if pre > 0 {v.push(pre);}
         }
-        v
-    }
-
-    pub(super) fn shr_inner(&self, rhs: &usize) -> Vec<u32> {
-        let (num, nom) = (rhs >> 5, rhs & 31);
-
-        if nom == 0 {
-            self.iter().skip(num).map(|&x|{x}).collect()
-        } else {
-            let mut v = Vec::with_capacity(self.num().saturating_sub(num));
-            let (mut pre, mask, nom_c) = (0, (1 << nom) - 1, 32 - nom);
-            let mut itr = self.iter().skip(num);
-            match itr.next() {
-                Some(&x) => {pre = x >> nom;},
-                None => {v.push(0);},
-            }
-            itr.for_each(|&a| {
-                let val = (a & mask) << nom_c;
-                v.push(val | pre);
-                pre = a >> nom;
-            });
-            if pre > 0 { v.push(pre); }
-            v
+        
+        if num > 0 {
+            v.resize(v.len() + num, 0);
+            v.rotate_right(num);
         }
     }
 
-    pub(super) fn div_inner(&self, rhs: &Self) -> Vec<u32> {
+    pub(super) fn shr_inner(&mut self, rhs: &usize) {
+        let rhs = *rhs;
+        let v = self.as_mut_vec();
+        let (num, nom, nom_c) = (rhs >> 5, rhs & 31, 32 - (rhs & 31));
+        let (nom, nom_c) = (nom as u32, nom_c as u32);
+        
+        if num >= v.len() {
+            v.clear();
+            v.push(0);
+            return;
+        }
+
+        let lhs = self.clone();
+        let mut pre = 0;
+        if nom > 0 {
+            let mask_h: u32 = ((1 << nom) - 1) << nom_c;
+            let mask_l: u32 = (1 << nom_c) - 1;
+            let mut itr = lhs.iter().skip(num);
+            match itr.next() { 
+                Some(x) => pre = *x >> nom,
+                None => {},
+            };
+            v.iter_mut().zip(itr).for_each(|(a, &b)| {
+                let r = b.rotate_right(nom);
+                *a = (r & mask_h) | pre;
+                pre = r & mask_l;
+            });
+        }
+        v.truncate(v.len() - num);
+        if pre > 0 {
+            match v.last_mut() {
+                Some(x) => *x = pre,
+                _ => {},
+            };
+        } else {
+            if nom > 0 && num == 0 {
+                v.pop();
+                if v.len() == 0 {
+                    v.push(0);
+                }
+            }
+        }
+    }
+    
+    #[inline]
+    pub(super) fn u32_shl(&mut self, lhs: u32, rhs: usize) {
+        let (num, rem) = (rhs >> 5, rhs & 31);
+        let v = self.as_mut_vec();
+        v.clear();
+        v.resize(num, 0);
+        v.push(lhs << rem);
+    }
+
+    pub(super) fn div_inner(&mut self, rhs: &Self) {
         assert_ne!(rhs, &0u32, "The divisor must not be 0");
         
-        if self < rhs {
-            return vec![0];
+        if self.nat.as_ptr() == rhs.nat.as_ptr() {
+            self.clear();
+            self.as_mut_vec().push(1);
+            return;
         }
         
-        let (dividend_len, divisor_len) = (self.bits_len(), rhs.bits_len());
-        if dividend_len == divisor_len {
-            return vec![1];
-        }
-        
-        let one = Nat::from(1u32);
-        let mut nat = Nat::from(0u32);
         let mut sc = self.deep_clone();
+        self.clear();
+        
+        if sc.partial_cmp_inner(rhs) == Ordering::Less {
+            self.as_mut_vec().push(0);
+            return;
+        }
+        
+        let (dividend_len, divisor_len) = (sc.bits_len(), rhs.bits_len());
+        if dividend_len == divisor_len {
+            self.as_mut_vec().push(1);
+            return;
+        }
+
+        let mut one = Nat::from(1u32);
+        let mut den = Nat::with_capacity(rhs.num());
+        self.as_mut_vec().push(0);
         loop {
-            if sc >= rhs.clone() {
+            if !(sc.partial_cmp_inner(rhs) == Ordering::Less) {
+                den.clear();
                 let mut shift = sc.bits_len() - divisor_len;
-                let mut den = rhs.clone() << shift;
-                while den > sc {
-                    den >>= 1;
+                den.as_mut_vec().extend_from_slice(rhs.as_slice());
+                den.shl_inner(&shift);
+                while den.partial_cmp_inner(&sc) == Ordering::Greater {
+                    den.shr_inner(&1);
                     shift -= 1;
                 }
-                
-                sc -= den;
-                nat += one.clone() << shift;
+
+                sc.sub_inner(&den);
+                one.u32_shl(1, shift);
+                self.add_inner(&one);
             } else {
                 break;
             }
         }
-        
-        nat.into_vec()
     }
-
-    pub(super) fn rem_inner(&self, rhs: &Self) -> Vec<u32> {
+    
+    pub(super) fn rem_inner(&mut self, rhs: &Self) {
         assert_ne!(rhs, &0u32, "The modulus must not be 0");
-        
-        if self < rhs {
-            return self.to_vec();
+
+        if self.partial_cmp_inner(rhs) == Ordering::Less {
+            return;
         }
-        
+
         let divisor_len = rhs.bits_len();
-        let mut sc = self.deep_clone();
+        let mut den = Nat::with_capacity(rhs.num());
         loop {
-            if sc.clone() < rhs.clone() {
+            if self.partial_cmp_inner(rhs) == Ordering::Less {
                 break;
             } else {
-                let shift = sc.bits_len() - divisor_len;
-                let mut den = rhs.clone() << shift;
-                if den.clone() > sc.clone() {
-                    den >>= 1;
+                den.clear();
+                let shift = self.bits_len() - divisor_len;
+                den.as_mut_vec().extend_from_slice(rhs.as_slice());
+                den.shl_inner(&shift);
+                if self.partial_cmp_inner(&den) == Ordering::Less {
+                    den.shr_inner(&1);
                 }
-                sc -= den;
+                self.sub_inner(&den);
             }
         }
-        
-        sc.into_vec()
+        self.trim_head_zero();
     }
 
-    pub(super) fn bitand_inner(&self, rhs: &Self) -> Vec<u32> {
-        let (min, max) = Self::min_max_by_len(self.as_slice(), rhs.as_slice());
-        let mut v = Vec::with_capacity(min.len());
-        
-        min.iter().zip(max.iter()).for_each(|(&a, &b)| {
-            v.push(a & b);
+    pub(super) fn bitand_inner(&mut self, rhs: &Self) {
+        self.iter_mut().zip(rhs.iter()).for_each(|(a,&b)| {
+            *a &= b;
         });
-        
-        Self::trim_head_zero_(&mut v);
-        
-        v
+        self.as_mut_vec().truncate(std::cmp::min(self.num(), rhs.num()));
+        self.trim_head_zero();
     }
     
-    pub(super) fn bitor_inner(&self, rhs: &Self) -> Vec<u32> {
-        let (min, max) = Self::min_max_by_len(self.as_slice(), rhs.as_slice());
-        let mut v = Vec::with_capacity(max.len());
-
-        min.iter().zip(max.iter()).for_each(|(&a, &b)| {
-            v.push(a | b);
+    pub(super) fn bitor_inner(&mut self, rhs: &Self) {
+        self.iter_mut().zip(rhs.iter()).for_each(|(a, &b)| {
+            *a |= b;
         });
         
-        max.iter().skip(min.len()).for_each(|&a| {
-            v.push(a);
-        });
-        Self::trim_head_zero_(&mut v);
-        
-        v
+        let (mi, ma) = (self.num(), rhs.num());
+        if mi < ma {
+            let v = self.as_mut_vec();
+            rhs.iter().skip(mi).for_each(|&b| {
+                v.push(b);
+            });
+        }
     }
     
-    pub(super) fn bitxor_inner(&self, rhs: &Self) -> Vec<u32> {
-        let (min, max) = Self::min_max_by_len(self.as_slice(), rhs.as_slice());
-        let mut v = Vec::with_capacity(max.len());
-
-        min.iter().zip(max.iter()).for_each(|(&a, &b)| {
-            v.push(a ^ b);
+    pub(super) fn bitxor_inner(&mut self, rhs: &Self) {
+        self.iter_mut().zip(rhs.iter()).for_each(|(a, &b)| {
+            *a ^= b;
         });
 
-        max.iter().skip(min.len()).for_each(|&a| {
-            v.push(a ^ 0);
-        });
-        Self::trim_head_zero_(&mut v);
-        
-        v
+        let (mi, ma) = (self.num(), rhs.num());
+        if mi < ma {
+            let v = self.as_mut_vec();
+            rhs.iter().skip(mi).for_each(|&b| {
+                v.push(b);
+            });
+        }
+        self.trim_head_zero();
     }
     
-    pub(super) fn mul_inner_basic(&self, rhs: &u32) -> Vec<u32> {
-        let cp: Vec<u64> = self.iter().map(|&i| {(i as u64) * (*rhs as u64)}).collect();
-        let mut v = Vec::with_capacity(cp.len() + 1);
+    pub(super) fn mul_inner_basic(&mut self, rhs: &u32) {
         let mut pre = 0;
-        
         const MASK: u64 = u32::MAX as u64;
-        cp.iter().for_each(|&x| {
+        
+        let rhs = *rhs as u64;
+        self.iter_mut().for_each(|a| {
+            let x = (*a as u64) * rhs;
             let val = (x & MASK) + pre;
-            v.push((val & MASK) as u32);
+            *a = (val & MASK) as u32;
             pre = (val >> 32) + (x >> 32);
         });
         
-        if pre > MASK {v.push((pre & MASK) as u32); v.push((pre >> 32) as u32);}
-        else if pre > 0 {v.push(pre as u32);}
-        
-        v
+        if pre > MASK {
+            self.as_mut_vec().push((pre & MASK) as u32);
+            self.as_mut_vec().push((pre >> 32) as u32);
+        } else {
+            self.as_mut_vec().push(pre as u32);
+        }
     }
     
-    pub(super) fn div_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+    pub(super) fn div_inner_basic(&mut self, rhs: &u32) {
         assert_ne!(rhs, &0, "divisor cannot be the 0");
-        if self < rhs {
-            return vec![0];
+        
+        if self.num() <= 1 {
+            match self.as_mut_vec().last_mut() { 
+                Some(x) => *x = *x / *rhs,
+                None => {},
+            };
+            return;
         }
         
-        let mut pre = 0;
-        let mut v = Vec::with_capacity(self.num());
+        let old_len = self.num();
         let rhs = (*rhs) as u64;
-        
-        self.iter().rev().for_each(|&x| {
-            let val = (pre << 32) + (x as u64);
-            v.push((val / rhs) as u32);
+        let (mut pre, mut i) = (0, 0);
+        self.iter_mut().rev().for_each(|x| {
+            let val = (pre << 32) + (*x as u64);
+            *x = (val / rhs) as u32;
             pre = val % rhs;
+            i += 1;
         });
         
-        v.reverse();
-        v
+        if i == 0 {
+            self.clear();
+            self.as_mut_vec().push(0);
+        } else {
+            self.as_mut_vec().rotate_right(old_len - i);
+            self.as_mut_vec().truncate(i);
+            self.trim_head_zero();
+        }
     }
-    
-    pub(super) fn rem_inner_basic(&self, rhs: &u32) -> Vec<u32> {
+
+    pub(super) fn rem_inner_basic(&mut self, rhs: &u32) {
         assert_ne!(rhs, &0, "modulus cannot be the 0");
-        if self < rhs {
-            return self.to_vec();
+        
+        if self.num() <= 1 {
+            match self.as_mut_vec().last_mut() {
+                Some(x) => *x = *x % *rhs,
+                None => {},
+            };
+            return;
         }
+        
         let mut pre = 0;
         let rhs = (*rhs) as u64;
         self.iter().rev().for_each(|&x| {
             let val = (pre << 32) + (x as u64);
             pre = val % rhs;
         });
-        
-        vec![pre as u32]
+
+        self.clear();
+        self.as_mut_vec().push(pre as u32);
     }
-    
+
     pub(super) fn not_inner(&self) -> Vec<u32> {
         let mut v = Vec::with_capacity(self.num());
         
@@ -535,6 +603,13 @@ impl Nat {
         Nat::from(Vec::<u32>::new())
     }
     
+    #[inline]
+    pub(super) fn with_capacity(cap: usize) -> Nat {
+        Nat {
+            nat: Rc::new(Cell::new(Vec::with_capacity(cap))),
+        }
+    }
+    
     pub(super) fn is_set_bit_(&self, idx: usize) -> bool {
         let (num, rem) = (idx >> 5, (idx & 31));
         match self.iter().nth(num) {
@@ -556,20 +631,39 @@ impl Nat {
     pub fn pow(&self, b: Nat) -> Nat {
         if self.is_nan() || b.is_nan() {return Nat::nan();}
         
-        if self == &0u32 {if b.clone() == 0u32 {Nat::from(1u32)} else {Nat::from(0u32)}}
-        else if b.clone() == 0u32 {Nat::from(1u32)}
+        let mut lhs = self.deep_clone();
+        lhs.pow_inner(b);
+        lhs
+    }
+    
+    fn pow_inner(&mut self, b: Nat) {
+        if &*self == &0u32 {
+            if b == 0u32 {self.clear(); self.as_mut_vec().push(1);} 
+            else {self.clear(); self.as_mut_vec().push(0);}
+        }
+        else if b.clone() == 0u32 {
+            self.clear();
+            self.as_mut_vec().push(1);
+        }
         else {
+            let b = if b.as_vec().as_ptr() == self.as_vec().as_ptr() {
+                b.deep_clone()
+            } else {
+                b
+            };
+            
             let blen = b.bits_len();
             let mut pre = self.deep_clone();
-            let mut cur = if b.is_set_bit_(0) {self.deep_clone()} else {Nat::from(1u32)};
+            if !b.is_set_bit_(0) {
+                self.clear();
+                self.as_mut_vec().push(1u32);
+            }
             (1..blen).for_each(|i| {
-                pre *= pre.clone();
+                pre.mul_inner(&pre.clone());
                 if b.is_set_bit_(i) {
-                    cur *= pre.clone();
+                    self.mul_inner(&pre);
                 }
             });
-
-            cur
         }
     }
     
@@ -579,24 +673,195 @@ impl Nat {
     pub fn pow_mod(&self, b: Nat, n: Nat) -> Nat {
         if self.is_nan() || b.is_nan() || n.is_nan() { return Nat::nan(); }
         
+        let mut a = self.deep_clone();
+        a.pow_mod_inner(b, n);
+        a
+    }
+    
+    fn pow_mod_inner(&mut self, b: Nat, n: Nat) {
         if n == 0u32 {
-            self.pow(b)
+            self.pow_inner(b);
         } else if n == 1u32 {
-            Nat::from(0u32)
+            self.clear();
+            self.as_mut_vec().push(0);
         } else {
+            let n = if n.as_vec().as_ptr() == self.as_vec().as_ptr() {n.deep_clone()} else {n};
+            let b = if b.as_vec().as_ptr() == self.as_vec().as_ptr() {b.deep_clone()} else {b};
             // 反复平方法
-            let mut d = Nat::from(1u32);
-            let sm = self.clone() % n.clone();
+            let mut sm = self.deep_clone();
+            self.clear();
+            self.as_mut_vec().push(1);
+            sm.rem_inner(&n);
             (0..b.bits_len()).rev().for_each(|i| {
-                d *= d.clone();
-                d %= n.clone();
+                self.mul_inner(&self.clone());
+                self.rem_inner(&n);
                 if b.is_set_bit_(i) {
-                    d *= sm.clone();
-                    d %= n.clone();
+                    self.mul_inner(&sm);
+                    self.rem_inner(&n);
                 }
             });
-            d.clone()
         }
+    }
+    
+    /// generate a random number that belong to the range of [0, self)
+    pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> Nat {
+        if self.is_nan() || self == &0u32 {
+            return Nat::nan();
+        }
+        
+        let bits_len = self.bits_len();
+        let (num, rem) = (self.num(), bits_len & 31);
+        let mask = if rem == 0 {u32::MAX} else {(1u32 << rem) - 1};
+        
+        let nat = Nat::with_capacity(num);
+        
+        let mut itr = rng.iter_mut();
+        loop {
+            let v = nat.as_mut_vec();
+            v.clear();
+            
+            while v.len() < num {
+                match itr.next() {
+                    Some(x) => v.push(x),
+                    None => itr.clear_error(),
+                    // None => panic!("{}", itr.last_error().unwrap()),
+                }
+            }
+            
+            match v.last_mut() {
+                Some(x) => *x &= mask,
+                None => {},
+            }
+            
+            if &nat < self {
+                break;
+            }
+        }
+
+        nat
+    }
+
+    pub fn trailling_zeros(&self) -> usize {
+        let mut cnt = 0;
+        for &ele in self.iter() {
+            if ele == 0 {
+                cnt += 32;
+            } else {
+                cnt += ele.trailing_zeros() as usize;
+                break;
+            }
+        }
+        cnt
+    }
+
+    /// 判断n是否是合数  
+    fn miller_rabin_witness(&mut self, n: &Self) -> bool {
+        let n_m1 = n.clone() - 1u32;
+        let t = n_m1.trailling_zeros();
+        let u = n_m1.clone() >> t;
+
+        // let xi_m1 = self.pow_mod(u.clone(), n.clone());
+        self.pow_mod_inner(u, n.clone());
+        let xi_m1 = self;
+        let mut xi = Nat::with_capacity(xi_m1.num());
+        for _ in 1..=t {
+            xi.as_mut_vec().clear();
+            xi.as_mut_vec().extend_from_slice(xi_m1.as_slice());
+            xi.mul_inner(&xi_m1);
+            xi.rem_inner(n);
+
+            if xi == 1u32 && *xi_m1 != 1u32 && *xi_m1 != n_m1 {
+                return true;
+            }
+            xi_m1.as_mut_vec().clear();
+            xi_m1.as_mut_vec().extend_from_slice(xi.as_slice());
+        }
+
+        *xi_m1 != 1u32
+    }
+
+    /// miller-rabin素数测试   
+    /// 对于任意奇数n>2和正整数s, miller-rabin素数测试出错的概率至多为2^(-s)  
+    /// 
+    /// note: 内部调用函数, self是大于2的奇数, s>0  
+    fn prime_validate_by_miller_rabin<Rng: IterSource<u32>>(&self, s: usize, rng: &mut Rng) -> bool {
+        for _ in 0..s {
+            let mut a = self.random(rng);
+            if a.miller_rabin_witness(self) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// probablyPrimeLucas reports whether n passes the "almost extra strong" Lucas probable prime test,
+    /// using Baillie-OEIS parameter selection. This corresponds to "AESLPSP" on Jacobsen's tables (link below).
+    /// The combination of this test and a Miller-Rabin/Fermat test with base 2 gives a Baillie-PSW test.
+    ///
+    /// References:
+    ///
+    /// Baillie and Wagstaff, "Lucas Pseudoprimes", Mathematics of Computation 35(152),
+    /// October 1980, pp. 1391-1417, especially page 1401.
+    /// https://www.ams.org/journals/mcom/1980-35-152/S0025-5718-1980-0583518-6/S0025-5718-1980-0583518-6.pdf
+    ///
+    /// Grantham, "Frobenius Pseudoprimes", Mathematics of Computation 70(234),
+    /// March 2000, pp. 873-891.
+    /// https://www.ams.org/journals/mcom/2001-70-234/S0025-5718-00-01197-2/S0025-5718-00-01197-2.pdf
+    ///
+    /// Baillie, "Extra strong Lucas pseudoprimes", OEIS A217719, https://oeis.org/A217719.
+    ///
+    /// Jacobsen, "Pseudoprime Statistics, Tables, and Data", http://ntheory.org/pseudoprimes.html.
+    ///
+    /// Nicely, "The Baillie-PSW Primality Test", http://www.trnicely.net/misc/bpsw.html.
+    /// (Note that Nicely's definition of the "extra strong" test gives the wrong Jacobi condition,
+    /// as pointed out by Jacobsen.)
+    ///
+    /// Crandall and Pomerance, Prime Numbers: A Computational Perspective, 2nd ed.
+    /// Springer, 2005.
+    /// note: Miller-Rabin算法目前可以通过所有测试示例, 故lucas算法暂不实现
+    fn prime_validate_by_lucas(&self) -> bool {
+        // Baillie-OEIS "method C" for choosing D, P, Q,
+        // as in https://oeis.org/A217719/a217719.txt:
+        // try increasing P ≥ 3 such that D = P² - 4 (so Q = 1)
+        // until Jacobi(D, n) = -1.
+        // The search is expected to succeed for non-square n after just a few trials.
+        // After more than expected failures, check whether n is square
+        // (which would cause Jacobi(D, n) = 1 for all D not dividing n).
+        true
+    }
+
+    pub fn probably_prime_test<Rng: IterSource<u32>>(&self, n: usize, rng: &mut Rng) -> bool {
+        if self.is_nan() || (self == &0u32) {
+            return false;
+        }
+
+        const PRIME_BIT_MASK: u128 = 1<<2 | 1<<3 | 1<<5 | 1<<7 |
+            1<<11 | 1<<13 | 1<<17 | 1<<19 | 1<<23 | 1<<29 | 1<<31 |
+            1<<37 | 1<<41 | 1<<43 | 1<<47 | 1<<53 | 1<<59 | 1<<61 | 1<<67 |
+            1<<71 | 1<<73 | 1<<79 | 1<<83 | 1<<89 | 1<<97 | 1<<101 |
+            1<<103 | 1<<107 | 1<<109 | 1<< 113 | 1<<127;
+
+        let x = self.as_vec()[0] as u128;
+        // 小素数直接判断
+        if (self.num() == 1) && (x < 128) {
+            return ((1<<x) & PRIME_BIT_MASK) != 0;
+        }
+
+        // 偶数
+        if x & 0x1 == 0 {
+            return false;
+        }
+
+        const PRIMES_A: u32 = 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 37;
+        const PRIMES_B: u32 = 29 * 31 * 41 * 43 * 47 * 53;
+        let (ra, rb) = (self.clone() % PRIMES_A, self.clone() % PRIMES_B);
+        if ra.clone()%3u32 == 0u32 || ra.clone()%5u32 == 0u32 || ra.clone()%7u32 == 0u32 || ra.clone()%11u32 == 0u32 || ra.clone()%13u32 == 0u32 
+            || ra.clone()%17u32 == 0u32 || ra.clone()%19u32 == 0u32 || ra.clone()%23u32 == 0u32 || ra.clone()%37u32 == 0u32 ||
+            rb.clone()%29u32 == 0u32 || rb.clone()%31u32 == 0u32 || rb.clone()%41u32 == 0u32 || rb.clone()%43u32 == 0u32 || rb.clone()%47u32 == 0u32 || rb.clone()%53u32 == 0u32 {
+            return false
+        }
+        self.prime_validate_by_miller_rabin(n+1, rng) && self.prime_validate_by_lucas()
     }
 }
 
@@ -770,41 +1035,29 @@ impl PartialOrd for Nat {
             return None;
         }
         
-        if self.num() < other.num() {
-            Some(Ordering::Less)
-        } else if self.num() > other.num() {
-            Some(Ordering::Greater)
-        } else {
-            for (&a, &b) in self.iter().rev().zip(other.iter().rev()) {
-                if a < b {
-                    return Some(Ordering::Less);
-                } else if a > b {
-                    return Some(Ordering::Greater);
-                }
-            }
-            Some(Ordering::Equal)
-        }
+        Some(self.partial_cmp_inner(other))
     }
 }
 
 nat_ord_basic!(u8, u16, u32, u64, u128, usize);
 
-nat_arith_ops!((Nat, Add, AddAssign, add, add_assign, add_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, Sub, SubAssign, sub, sub_assign, sub_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (usize, Shl, ShlAssign, shl, shl_assign, shl_inner, |_rhs: &usize| {false}),
-    (usize, Shr, ShrAssign, shr, shr_assign, shr_inner, |_rhs: &usize| {false}),
-    (Nat, Div, DivAssign, div, div_assign, div_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, Rem, RemAssign, rem, rem_assign, rem_inner, |rhs: &Nat| {rhs.is_nan()}),
+nat_arith_ops1!(
     (Nat, Mul, MulAssign, mul, mul_assign, mul_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, BitAnd, BitAndAssign, bitand, bitand_assign, bitand_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, BitOr, BitOrAssign, bitor, bitor_assign, bitor_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (Nat, BitXor, BitXorAssign, bitxor, bitxor_assign, bitxor_inner, |rhs: &Nat| {rhs.is_nan()}),
-    (u32, Add, AddAssign, add, add_assign, add_inner_basic, |_rhs: &u32| {false}),
-    (u32, Sub, SubAssign, sub, sub_assign, sub_inner_basic, |_rhs: &u32| {false}),
     (u32, Mul, MulAssign, mul, mul_assign, mul_inner_basic, |_rhs: &u32| {false}),
+    (u32, Rem, RemAssign, rem, rem_assign, rem_inner_basic, |_rhs: &u32| {false}),
     (u32, Div, DivAssign, div, div_assign, div_inner_basic, |_rhs: &u32| {false}),
-    (u32, Rem, RemAssign, rem, rem_assign, rem_inner_basic, |_rhs: &u32| {false})
-    );
+    (Nat, BitXor, BitXorAssign, bitxor, bitxor_assign, bitxor_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (Nat, BitOr, BitOrAssign, bitor, bitor_assign, bitor_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (Nat, BitAnd, BitAndAssign, bitand, bitand_assign, bitand_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (Nat, Rem, RemAssign, rem, rem_assign, rem_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (Nat, Div, DivAssign, div, div_assign, div_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (usize, Shr, ShrAssign, shr, shr_assign, shr_inner, |_rhs: &usize| {false}),
+    (usize, Shl, ShlAssign, shl, shl_assign, shl_inner, |_rhs: &usize| {false}),
+    (Nat, Sub, SubAssign, sub, sub_assign, sub_inner, |rhs: &Nat| {rhs.is_nan()}),
+    (u32, Sub, SubAssign, sub, sub_assign, sub_inner_basic, |_rhs: &u32| {false}),
+    (u32, Add, AddAssign, add, add_assign, add_inner_basic, |_rhs: &u32| {false}),
+    (Nat, Add, AddAssign, add, add_assign, add_inner, |rhs: &Nat| {rhs.is_nan()})
+);
 
 impl Not for Nat {
     type Output = Nat;

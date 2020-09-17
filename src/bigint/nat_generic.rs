@@ -1,15 +1,17 @@
 use crate::bigint::Nat;
 
 impl Nat {
-    pub(super) fn mul_inner(&self, max: &Self) -> Vec<u32> {
+    pub(super) fn mul_inner(&mut self, max: &Self) {
         const MASK: u64 = 0xffffffff;
         const SHR_BITS: u8 = 32;
 
-        let (min, max, _) = Self::min_max(self, max);
+        let (min, max, _) = Self::min_max(&*self, max);
         let min: Vec<u64> = min.iter().map(|&x| {x as u64}).collect();
         let max: Vec<u64> = max.iter().map(|&x| {x as u64}).collect();
-        let mut nat = Nat::from(0u32);
-        nat.as_mut_vec().reserve(min.len() + max.len());
+        let nat = self.as_mut_vec();
+        nat.reserve(min.len() + max.len());
+        nat.clear();
+        nat.push(0);
 
         let mut round = Vec::with_capacity(min.len() + max.len());
         min.iter().enumerate().for_each(|(i, &a)| {
@@ -24,86 +26,114 @@ impl Nat {
                 round.push((y >> SHR_BITS) as u32);
                 if cy { round.push(1)};
             });
-            nat += Nat::from(round.as_slice());
+            self.add_inner(&Nat::from(round.as_slice()));
         });
-
-        nat.to_vec()
+        self.trim_head_zero();
     }
 
-    pub(super) fn add_inner(&self, rhs: &Self) -> Vec<u32> {
-        let (min, max) = Nat::min_max_by_len(self.as_slice(), rhs.as_slice());
-
-        let mut v = Vec::with_capacity(max.len());
-        let mut carry = 0;
-        min.iter().zip(max.iter()).for_each(|(&a, &b)| {
-            let (x, cx) = a.overflowing_add(carry);
-            let (y, cy) = b.overflowing_add(x);
-            carry = if cx || cy {1} else {0};
-            v.push(y);
+    pub(super) fn add_inner(&mut self, rhs: &Self) {
+        let is_ge = *self >= *rhs;
+        if !is_ge {
+            self.as_mut_vec().resize(rhs.num(), 0);
+        }
+        
+        let mut c = 0;
+        self.iter_mut().zip(rhs.iter()).for_each(|(a, &b)| {
+            let (x,cx) = a.overflowing_add(b);
+            let (y, cy) = x.overflowing_add(c);
+            *a = y;
+            c = if cx || cy {1} else {0};
         });
-
-        max.iter().skip(min.len()).for_each(|&a| {
-            let (x, cx) = a.overflowing_add(carry);
-            carry  = if cx {1} else {0};
-            v.push(x);
+        self.iter_mut().skip(rhs.num()).for_each(|a| {
+            let (x, cx) = a.overflowing_add(c);
+            *a = x;
+            c = if cx {1} else {0};
         });
-
-        if carry > 0 {v.push(carry);}
-        v
+        
+        if c > 0 {
+            self.as_mut_vec().push(c);
+        }
     }
 
-    /// (abs(self-rhs), self >= rhs)
-    pub(super) fn sub_inner_with_sign(&self, rhs: &Self) -> (Vec<u32>, bool) {
-        let mut v = Vec::new();
-        let mut carry = 0;
-        let (min, max, is_great) = Self::min_max(&self, &rhs);
-        max.iter().zip(min.iter()).for_each(|(&a, &b)| {
-            let (x, cx) = a.overflowing_sub(carry);
-            let (y, cy) = x.overflowing_sub(b);
-            carry = if cx || cy {1} else {0};
-            v.push(y);
+    pub(super) fn sub_inner_with_sign(&mut self, rhs: &Self) -> bool {
+        let is_ge = *self >= *rhs;
+        if !is_ge {
+            self.as_mut_vec().resize(rhs.num(), 0);
+        }
+        
+        let mut c = 0;
+        self.iter_mut().zip(rhs.iter()).for_each(|(a, &b)| {
+            let (x, cx) = if is_ge {
+                a.overflowing_sub(b)
+            } else {
+                b.overflowing_sub(*a)
+            };
+            let (y, cy) = x.overflowing_sub(c);
+            *a = y;
+            c = if cy || cx {1} else {0};
         });
-
-        max.iter().skip(min.num()).for_each(|&a| {
-            let (x, cx) = a.overflowing_sub(carry);
-            carry = if cx {1} else {0};
-            v.push(x);
-        });
-
-        Self::trim_head_zero_(&mut v);
-        (v, is_great)
-    }
-
-    pub(super) fn sub_inner(&self, rhs: &Self) -> Vec<u32> {
-        self.sub_inner_with_sign(rhs).0
-    }
-
-    pub(super) fn add_inner_basic(&self, rhs: &u32) -> Vec<u32> {
-        let mut v = Vec::with_capacity(self.num());
-        let mut c = *rhs;
-        self.iter().for_each(|&x| {
-            let (y, isc) = x.overflowing_add(c);
-            v.push(y);
-            c = if isc {1} else {0};
-        });
-
-        if c > 0 {v.push(c);}
-
-        v
-    }
-
-    pub(super) fn sub_inner_basic(&self, rhs: &u32) -> Vec<u32> {
-        if self > rhs {
-            let mut v = Vec::with_capacity(self.num());
-            let mut c = *rhs;
-            self.iter().for_each(|&a| {
-                let (x, isc) = a.overflowing_sub(c);
-                v.push(x);
-                c = if isc {1} else {0}
+        
+        if is_ge && c > 0 {
+            self.iter_mut().skip(rhs.num()).for_each(|a| {
+                let (x, cx) = a.overflowing_sub(c);
+                *a = x;
+                c = if cx {1} else {0};
             });
-            v
+        }
+        
+        self.trim_head_zero();
+        
+        is_ge
+    }
+
+    pub(super) fn sub_inner(&mut self, rhs: &Self) {
+        self.sub_inner_with_sign(rhs);
+    }
+
+    pub(super) fn add_inner_basic(&mut self, rhs: &u32) {
+        let mut c = 0;
+        let mut rhs = *rhs;
+        self.iter_mut().for_each(|a| {
+            let (x, cx) = a.overflowing_add(rhs);
+            let (y, cy) = x.overflowing_add(c);
+            rhs = 0;
+            *a = y;
+            c = if cx || cy {1} else {0};
+        });
+        if c > 0 {
+            self.as_mut_vec().push(c);
+        }
+    }
+
+    pub(super) fn sub_inner_basic(&mut self, rhs: &u32) {
+        if self.num() <= 1 {
+            match self.as_mut_vec().first_mut() {
+                Some(x) => {
+                    *x = if *x < *rhs {
+                        *rhs - *x
+                    } else {
+                        *x - *rhs
+                    };
+                },
+                None => {},
+            };
         } else {
-            vec![rhs - self.as_vec().first().unwrap()]
+            let mut rhs = *rhs;
+            let mut c = 0;
+            self.iter_mut().for_each(|a| {
+                c = if rhs > 0 {
+                    let (x, cx) = a.overflowing_sub(rhs);
+                    let (y, cy) = x.overflowing_sub(c);
+                    *a = y;
+                    rhs = 0;
+                    if cx || cy {1} else {0}
+                } else {
+                    let (x, cx) = a.overflowing_sub(c);
+                    *a = x;
+                    if cx {1} else {0}
+                }
+            });
+            self.trim_head_zero();
         }
     }
 
