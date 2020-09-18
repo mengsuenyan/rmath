@@ -16,3 +16,10 @@ mod nat_generic;
 
 pub use nat::Nat;
 pub use nat_err::NatError;
+
+
+#[macro_use]
+mod bigint_macro;
+
+mod bigint;
+pub use bigint::BigInt;

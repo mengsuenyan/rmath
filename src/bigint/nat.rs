@@ -181,7 +181,11 @@ impl Nat {
             i += 1;
         }
         
-        Err(NatError::new(BeginWithIllegalChar, "all char is +"))
+        if s.len() > 0 {
+            Err(NatError::new(BeginWithIllegalChar, "all char is +"))
+        } else {
+            Err(NatError::new(BeginWithIllegalChar, "empty string"))
+        }
     }
     
     fn from_dec_str(s: &str) -> Result<Self, NatError> {
