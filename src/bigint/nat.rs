@@ -1016,8 +1016,12 @@ impl Display for Nat {
             let val = rem.as_vec().first().unwrap();
             nat_str.push(format!("{}", val));
         }
-        nat_str.reverse();
-        write!(f, "{}", nat_str.join(""))
+        if nat_str.is_empty() {
+            write!(f, "{}", 0)
+        } else {
+            nat_str.reverse();
+            write!(f, "{}", nat_str.join(""))
+        }
     }
 }
 
