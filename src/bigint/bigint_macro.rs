@@ -39,7 +39,11 @@ macro_rules! bigint_from_basici {
         impl From<$Type0> for BigInt {
             fn from(x: $Type0) -> Self {
                 Self {
-                    nat: Nat::from(x.abs() as $TgtType0),
+                    nat: if x == <$Type0>::MIN {
+                        Nat::from((<$Type0>::MAX as $TgtType0) + 1)
+                    } else {
+                        Nat::from(x.abs() as $TgtType0)
+                    },
                     sign: if x < 0 {BISign::Negative} else {BISign::Natural},
                 }
             }

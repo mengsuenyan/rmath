@@ -128,6 +128,7 @@ lfr_impl!(u32);
 lfr_impl!(u64);
 lfr_impl!(usize);
 
+/// 24-bit RANLUX generator by Martin Lüscher and Fred James, 1994
 #[macro_export]
 macro_rules! ranlux24_base {
     ($Sd: ident) => {
@@ -135,6 +136,7 @@ macro_rules! ranlux24_base {
     };
 }
 
+/// 48-bit RANLUX generator by Martin Lüscher and Fred James, 1994
 #[macro_export]
 macro_rules! ranlux48_base {
     ($Sd: ident) => {
