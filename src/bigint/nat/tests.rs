@@ -469,7 +469,7 @@ fn nat_prime_test() {
 
     let s = DefaultSeed::new().unwrap();
     let mut rng = CryptoRand::new(&s).unwrap();
-    let s = 2usize;
+    let s = 1usize;
     let his0 = Instant::now();
     cases.iter().for_each(|&x| {
         let nat = Nat::from_str(x).unwrap();

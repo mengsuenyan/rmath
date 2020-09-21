@@ -42,6 +42,29 @@ impl Ord for BISign {
     }
 }
 
+/// The type `BigInt` provides natural number operations like the Add, Sub, Mul, Div and so on.
+/// 
+/// # Examples
+/// 
+/// ```Rust
+/// use rmath::bigint::Nat;
+/// use std::str::FromStr;
+/// 
+/// let (a, b) = (BigInt::from(u32::MAX), BigInt::from(u32::MAX));
+/// let sum = a.clone() + b.clone();
+/// let mul = sum * a + b;
+/// println!("(({}+{})*{}) + {} = {}", a, b, a, b, mul);
+/// 
+/// let a = BigInt::from_str("2938462938472983472983659726349017249287491026512746239764525612965293865296239471239874193284792387498274256129746192347").unwrap();
+/// let b = BigInt::from_str("298472983472983471903246121093472394872319615612417471234712061").unwrap();
+/// println!("{} * {} = {}", a.clone(), b.clone(), a*b );
+/// ```
+/// Note: The implementation of the `Clone` trait just only provide a shadow clone of the data that purpose 
+/// is to share the ownership of the data, and the `deep_clone` method provide a real clone of the data.
+/// 
+/// # Panics
+/// 
+/// The panic will occurred when the divisor or modulus is 0 in the `/` or `%` operation;
 #[derive(Clone)]
 pub struct BigInt {
     nat: Nat,
@@ -399,7 +422,7 @@ impl FromStr for BigInt {
             } else {
                 BISign::Natural
             };
-            let nat = Nat::from_str(&s[1..])?;
+            let nat = Nat::from_str(if sign == Negative {&s[1..]} else {s})?;
             Ok(
                 Self {
                     nat,
@@ -484,7 +507,9 @@ bigint_fmt_impl!(
     (Octal, "{:#o}", "{:o}"),
     (LowerHex, "{:#x}", "{:x}"),
     (UpperHex, "{:#X}", "{:X}"),
-    (Debug, "{:?}", "{:?}"),
+    (Debug, "{:#?}", "{:?}"),
     (Binary, "{:#b}", "{:#b}")
 );
 
+#[cfg(test)]
+mod tests;
