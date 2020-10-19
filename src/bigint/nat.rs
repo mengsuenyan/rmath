@@ -890,7 +890,29 @@ impl Nat {
         }
         self.prime_validate_by_miller_rabin(n+1, rng) && self.prime_validate_by_lucas()
     }
-}
+    
+    /// return $\lfloor \sqrt{self} \rfloor$ by the Newton's method  
+    pub fn sqrt(&self) -> Nat {
+        if self <= &1u32 {
+            return self.deep_clone();
+        }
+        
+        let mut z1 = Nat::from(1u32);
+        z1 <<= (self.bits_len() + 1) >> 1;
+        
+        loop {
+            let mut z2 = self.clone() / z1.clone();
+            z2 += z1.clone();
+            z2 >>= 1;
+            
+            if z2 >= z1 {
+                return z1;
+            }
+            
+            z1 = z2;
+        }
+    }
+} // Nat
 
 impl Default for Nat {
     fn default() -> Self {
