@@ -244,6 +244,73 @@ fn nat_mul() {
 }
 
 #[test]
+fn nat_mul_by_karatsuba() {
+    let a = Nat::from_str("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+    let b = Nat::from_str("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+    let c = Nat::from_str("0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeff0000000000000000000000000000000000000000000000000000000000000001").unwrap();
+    let z = Nat::with_capacity(32);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    
+    let a = Nat::from_str("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+    let b = Nat::from_str("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").unwrap();
+    let c = Nat::from_str("0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000000000000000000000000000000000000000000000000000000000000001").unwrap();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from_str("0x123507af44107cfc63175d6cc354e6093bfeb7b0f5145641a0bc284bf1784696cc9791b18ab54de0114f6581d68041b66c7db").unwrap() ;
+    let b = Nat::from_str("0xb9bd7d543685789d57cb918e833af352559021483cdb05cc21fd").unwrap();
+    let c = Nat::from_str("0xd35cc9e369cf1fd0f297f4cf7ad21a1d9d65d9b421b51d5b689b0a47485a2c1582963dfc988179047a98dd36d5644070a0f8bb94fff1e6efeacc8ba03758fe7c8c574c12cfa377bedddabe6f").unwrap();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from_str("2938462938472983472983659726349017249287491026512746239764525612965293865296239471239874193284792387498274256129746192347").unwrap() ;
+    let b = Nat::from_str("298472983472983471903246121093472394872319615612417471234712061").unwrap();
+    let c = Nat::from_str("877051800070821244789099242710450134536982682006837233541161511456161001386576641869116186901815671895415144768179824202865342118174193449288433467901275304066981993483906649666797167").unwrap();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from(10u8);
+    let b = a.deep_clone();
+    let c = Nat::from(100u8);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let b = Nat::from(0u32);
+    let c = Nat::from(0u8);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let b = Nat::from(1u32);
+    let c = a.deep_clone();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from(0xffffffu64);
+    let b = Nat::from(0xfffffffffu128);
+    let c = Nat::from(0xfffffefff000001u128);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from_str("0xf9058301048250fabddeabf9320480284932084552541").unwrap();
+     let b = Nat::from_str("0xf329053910428502fabcd9230494035242429890eacb").unwrap();
+    let c = Nat::from_str("0xec882250900ba90c2088a4a5ee549ecc5152d7a50683a82daa24e03f6d6409468abf1ce1f01d9be845021f48b").unwrap();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c);
+    let a = Nat::from(u128::MAX);
+    let b = Nat::from(u32::MAX);
+    let c = Nat::from(u128::MAX);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c * u32::MAX);
+    let a = Nat::from(u128::MAX / 5);
+    let b = Nat::from(u32::MAX);
+    let c = a.deep_clone();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c * u32::MAX);
+    let a = Nat::from_str("0x123507af44107cfc63175d6cc354e6093bfeb7b0f5145641a0bc284bf1784696cc9791b18ab54de0114f6581d68041b66c7db").unwrap();
+    let b = Nat::from(u32::MAX);
+    let c = a.clone();
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c.clone() * u32::MAX);
+    let b = Nat::from(u32::MAX / 77);
+    Nat::mul_by_karatsuba(z.as_mut_vec(), a.as_slice(), b.as_slice());
+    assert_eq!(z, c * (u32::MAX / 77));
+}
+
+#[test]
 fn nat_div() {
     let l1 = Nat::from(100u8);
     let l2 = Nat::from(10u8);
@@ -289,7 +356,7 @@ fn nat_rem() {
 }
 
 #[test]
-fn nat_pow() {
+fn nat_pow2() {
     let cases = [
         ("3290008573752325757353025730253207247022057235703", "108241564153638127123\
 26338925222078355527665104927424021239791877758156389238060000928857697904209"),
@@ -311,9 +378,39 @@ fb1bd6bdc94b5a2d86f4ba46bfdec80a7614b6d1614ca2027b5cc5209837a8beb6a374def3\
     ];
     
     cases.iter().for_each(|&x| {
-        assert_eq!(Nat::from_str(x.0).unwrap().pow(Nat::from(2u32)), 
-            Nat::from_str(x.1).unwrap(),
-                   "case: {}", x.0);
+        let a = Nat::from_str(x.0).unwrap();
+        let b = Nat::from(2u32);
+        let c = Nat::from_str(x.1).unwrap();
+        assert_eq!(a.pow(b.clone()), c, "case: {}", x.0);
+        assert_eq!(a.exp(&b, &Nat::from(0u32)), c, "case: {}", x.0);
+    });
+}
+
+#[test]
+fn nat_sqr() {
+    let cases = [
+        ("3290008573752325757353025730253207247022057235703", "108241564153638127123\
+26338925222078355527665104927424021239791877758156389238060000928857697904209"),
+        ("0x90000000fac90247577fffffffffffffff327075770257ffffffffff157025700000000000000000000000000003277faeb",
+         "0x510000011a222291381d3647eaf2983fa600fe84244fe3d65c15277181259444346f541bc2ada3f9fc779dd57fbc3dde437a5dc\
+5458d1feec4f59c6527798bef33f79f172a6e22d8fffa383f112f3237ba0000000000000000000009f3163f0869d3b9"
+        ),
+        ("0xfabcde1234567980abcdef0123456789fedcba0987654321009876654321\
+0aefcdff9988776655443321009ffaaddeeeff90275205727535772673670673\
+2afedcaf39205707520735737272737603672670367327630673670376036720\
+67aedf",
+         "0xf5956d127999586326220be8b7f4ec08e60e111b31c08e252a840fcb54f184b9997adcefd2\
+c4f422acc103e6c6a05bed44345bdade4cbdc22bda89dd363a6c48fc42df2dfc0fd07301bd\
+8d8ecb8f70617dcee2056e8b503fd323c7d2b402e38fd46c92b778b7cfe3bd0356a9188cb4\
+8124aa0b0a7bafb31adeb694358bd1234eab7fed6e7b557a065d0963ed74ae6e0d44b183c3\
+fb1bd6bdc94b5a2d86f4ba46bfdec80a7614b6d1614ca2027b5cc5209837a8beb6a374def3\
+6df5360727eee5e641"
+        ),
+    ];
+    
+    cases.iter().for_each(|&x| {
+        let a = Nat::from_str(x.0).unwrap();
+        assert_eq!(a.sqr(), Nat::from_str(x.1).unwrap(), "case: {}", x.0);
     });
 }
 
@@ -321,13 +418,13 @@ fb1bd6bdc94b5a2d86f4ba46bfdec80a7614b6d1614ca2027b5cc5209837a8beb6a374def3\
 fn nat_pow_mod() {
     // c.0 ^ c.1 mod c.2
     let cases = [
-        // ("0", "0", "0", "1"),
-        // ("0", "0", "1", "0"),
-        // ("1", "1", "1", "0"),
-        // ("2", "1", "1", "0"),
-        // ("2", "2", "1", "0"),
-        // ("10", "100000000000", "1", "0"),
-        // ("0x8000000000000000", "2", "0", "0x40000000000000000000000000000000"),
+        ("0", "0", "0", "1"),
+        ("0", "0", "1", "0"),
+        ("1", "1", "1", "0"),
+        ("2", "1", "1", "0"),
+        ("2", "2", "1", "0"),
+        ("10", "100000000000", "1", "0"),
+        ("0x8000000000000000", "2", "0", "0x40000000000000000000000000000000"),
         ("0x8000000000000000", "2", "6719", "4944"),
         ("0x8000000000000000", "3", "6719", "5447"),
         ("0x8000000000000000", "1000", "6719", "1603"),
@@ -349,6 +446,16 @@ fn nat_pow_mod() {
     let x = std::time::Instant::now();
     cases.iter().for_each(|&x| {
         let m = Nat::from_str(x.0).unwrap().pow_mod(Nat::from_str(x.1).unwrap(), Nat::from_str(x.2).unwrap());
+        assert_eq!(m, Nat::from_str(x.3).unwrap(), "cases: ({}^{})%{}", x.0,x.1,x.2);
+    });
+    println!("{:?}", x.elapsed());
+    
+    let x = std::time::Instant::now();
+    cases.iter().for_each(|&x| {
+        let a = Nat::from_str(x.0).unwrap();
+        let b = Nat::from_str(x.1).unwrap();
+        let n = Nat::from_str(x.2).unwrap();
+        let m = a.exp(&b, &n);
         assert_eq!(m, Nat::from_str(x.3).unwrap(), "cases: ({}^{})%{}", x.0,x.1,x.2);
     });
     println!("{:?}", x.elapsed());

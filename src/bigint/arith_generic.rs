@@ -2,6 +2,8 @@
 
 #![allow(unused)]
 
+use std::ops::Add;
+
 /// z = x*y   
 /// (z >> 32, z & 0xffffffff)  
 #[inline]
@@ -42,6 +44,15 @@ pub(super) fn add_vv(z: &mut [u32], x: &[u32], y: &[u32]) -> u32 {
     })
 }
 
+pub(super) unsafe fn add_vv_inner(z: *mut u32, x: *const u32, y: *const u32, n: usize) -> u32 {
+    (0..n).fold(0, |c, i| {
+        let (tt0, cc0) = x.add(i).read().overflowing_add(y.add(i).read());
+        let (tt, cc) = tt0.overflowing_add(c);
+        z.add(i).write(tt);
+        if cc0 || cc {1} else {0}
+    })
+}
+
 /// z = x - y   
 /// return carry   
 pub(super) fn sub_vv(z: &mut [u32], x: &[u32], y: &[u32]) -> u32 {
@@ -53,10 +64,27 @@ pub(super) fn sub_vv(z: &mut [u32], x: &[u32], y: &[u32]) -> u32 {
     })
 }
 
+pub(super) unsafe fn sub_vv_inner(z: *mut u32, x: *const u32, y: *const u32, n: usize) -> u32 {
+    (0..n).fold(0, |c, i| {
+        let (tt0, cc0) = x.add(i).read().overflowing_sub(y.add(i).read());
+        let (tt, cc) = tt0.overflowing_sub(c);
+        z.add(i).write(tt);
+        if cc0 || cc {1} else {0}
+    })
+}
+
 pub(super) fn add_vw(z: &mut [u32], x: &[u32], y: u32) -> u32 {
     z.iter_mut().zip(x.iter()).fold(y, |c, (zt, &xt)| {
         let (tt, cc) = xt.overflowing_add(c);
         *zt = tt;
+        if cc {1} else {0}
+    })
+}
+
+pub(super) unsafe fn add_vw_inner(z: *mut u32, x: *const u32, y: u32, n: usize) -> u32 {
+    (0..n).fold(y, |c, i|{
+        let (tt, cc) = x.add(i).read().overflowing_add(c);
+        z.add(i).write(tt);
         if cc {1} else {0}
     })
 }
@@ -78,6 +106,14 @@ pub(super) fn sub_vw(z: &mut [u32], x: &[u32], y: u32) -> u32 {
     z.iter_mut().zip(x.iter()).fold(y, |c, (zt, &xt)| {
         let (tt, cc) = xt.overflowing_sub(c);
         *zt = tt;
+        if cc {1} else {0}
+    })
+}
+
+pub(super) unsafe fn sub_vw_inner(z: *mut u32, x: *const u32, y: u32, n: usize) -> u32 {
+    (0..n).fold(y, |c, i|{
+        let (tt, cc) = x.add(i).read().overflowing_sub(c);
+        z.add(i).write(tt);
         if cc {1} else {0}
     })
 }
@@ -110,6 +146,21 @@ pub(super) fn shl_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
     x.last().unwrap() >> s
 }
 
+pub(super) unsafe fn shl_vu_inner(z: *mut u32, x: *const u32, s: usize, n: usize) -> u32 {
+    if s == 0 || n == 0 {
+        std::ptr::copy(x, z, n);
+        return 0;
+    }
+    
+    let s = s & 31;
+    let ss = (32-s) & 31;
+    for i in (1..n).rev() {
+        z.add(i).write((x.add(i).read() << s) | (x.add(i-1).read() >> ss));
+    }
+    z.write(x.read() << s);
+    x.add(n-1).read() >> ss
+}
+
 pub(super) fn shr_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
     if s == 0 || x.is_empty(){
         z.copy_from_slice(x);
@@ -139,6 +190,15 @@ pub(super) fn add_mul_vvw(z: &mut [u32], x: &[u32], y: u32) -> u32 {
         let (z1, z0) = mul_add_www(xt, y, *zt);
         let (lo, cc) = z0.overflowing_add(c);
         *zt = lo;
+        if cc {1 + z1} else {z1}
+    })
+}
+
+pub(super) unsafe fn add_mul_vvw_inner(z: *mut u32, x: *const u32, y: u32, n: usize) -> u32{
+    (0..n).fold(0, |c, i| {
+        let (z1, z0) = mul_add_www(x.add(i).read(), y, z.add(i).read());
+        let (lo, cc) = z0.overflowing_add(c);
+        z.add(i).write(lo);
         if cc {1 + z1} else {z1}
     })
 }

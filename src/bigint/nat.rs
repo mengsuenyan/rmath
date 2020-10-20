@@ -11,6 +11,11 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
     Div, DivAssign, Mul, MulAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign,
     BitXor, BitXorAssign, Not, Rem, RemAssign};
 use crate::rand::IterSource;
+use crate::bigint::arith_generic::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
+
+const KARATSUBA_THRESHOLD: usize = 40;
+const BASIC_SQRT_HRESHOLD: usize = 20;
+const KARATSUBA_SQRT_HRESHOLD: usize = 260;
 
 #[cfg(test)]
 mod tests;
@@ -911,6 +916,680 @@ impl Nat {
             
             z1 = z2;
         }
+    }
+    
+    /// Factored out for readability - do not use outside karatsuba.
+    unsafe fn karatsuba_add(z: *mut u32, x: *const u32, n: usize) {
+        let c = add_vv_inner(z, z, x, n);
+        if c != 0 {
+            add_vw_inner(z.add(n), z.add(n), c, n >> 1);
+        }
+    }
+
+    unsafe fn karatsuba_sub(z: *mut u32, x: *const u32, n: usize) {
+        let c = sub_vv_inner(z, z, x, n);
+        if c != 0 {
+            sub_vw_inner(z.add(n), z.add(n), c, n >> 1);
+        }
+    }
+
+    unsafe fn basic_mul(z: *mut u32, x: *const u32, y: *const u32, xlen: usize, ylen: usize) {
+        (0..(xlen + ylen)).for_each(|i| {z.add(i).write(0)});
+        (0..ylen).for_each(|i| {
+            let d = y.add(i).read();
+            if d != 0 {
+                z.add(xlen + i).write(add_mul_vvw_inner(z.add(i), x, d, xlen));
+            }
+        });
+    }
+    
+    fn mul_add_ww(z: &mut Vec<u32>, x: &[u32], y: u32, r: u32) {
+        let m = x.len();
+        z.clear();
+        if m == 0 || y == 0 {
+            z.push(r);
+            return;
+        } else {
+            z.resize(m + 1, 0);
+            z[m] = mul_add_vww(&mut z[0..m], x, y, r);
+            Self::trim_head_zero_(z);
+        }
+    }
+    
+    pub fn mul_karatsuba(&self, b: &Nat) -> Nat {
+        let mut v = Vec::with_capacity(1);
+        Self::mul_by_karatsuba(&mut v, self.as_slice(), b.as_slice());
+        Nat::from(v)
+    }
+    
+    fn mul_by_karatsuba(z: &mut Vec<u32>, x: &[u32], y: &[u32]) {
+        let (m, n) = (x.len(), y.len());
+        z.clear();
+        if m < n {
+            Self::mul_by_karatsuba(z, y, x);
+            return;
+        } else if m == 0 || n == 0 {
+            return;
+        } else if n == 1 {
+            Self::mul_add_ww(z, x, y[0], 0);
+            return;
+        }
+        
+        if n < KARATSUBA_THRESHOLD {
+            z.resize(m + n, 0);
+            unsafe {
+                Self::basic_mul(z.as_mut_ptr(), x.as_ptr(), y.as_ptr(), x.len(), y.len());
+            }
+            Self::trim_head_zero_(z);
+            return;
+        }
+        
+        // m >= n && n >= karatsubaThreshold && n >= 2
+
+        // determine Karatsuba length k such that
+        //
+        //   x = xh*b + x0  (0 <= x0 < b)
+        //   y = yh*b + y0  (0 <= y0 < b)
+        //   b = 1<<(_W*k)  ("base" of digits xi, yi)
+        let k = Self::karatsuba_len(n, KARATSUBA_THRESHOLD);
+        let (x0, y0) = (&x[0..k], &y[0..k]);
+        z.resize(std::cmp::max(6*k, m+n), 0);
+        unsafe {
+            Self::karatsuba(z.as_mut_ptr(), x0.as_ptr(), y0.as_ptr(), x0.len(), y0.len(), z.len());
+        }
+        
+        z.truncate(m+n);
+        z.iter_mut().skip(k<<1).for_each(|e| {*e = 0});// upper portion of z is garbage (and 2*k <= m+n since k <= n <= m)
+        // If xh != 0 or yh != 0, add the missing terms to z. For
+        //
+        //   xh = xi*b^i + ... + x2*b^2 + x1*b (0 <= xi < b)
+        //   yh =                         y1*b (0 <= y1 < b)
+        //
+        // the missing terms are
+        //
+        //   x0*y1*b and xi*y0*b^i, xi*y1*b^(i+1) for i > 0
+        //
+        // since all the yi for i > 1 are 0 by choice of k: If any of them
+        // were > 0, then yh >= b^2 and thus y >= b^2. Then k' = k*2 would
+        // be a larger valid threshold contradicting the assumption about k.
+        //
+        
+        if k < n || m != n {
+            let mut t = Vec::with_capacity(k * 3);
+            let mut zero_count = 0;
+            for &ele in x0.iter().rev() { if ele != 0 {break;} zero_count += 1};
+            let x0 = &x0[..(x0.len() - zero_count)];
+            let y1 = &y[k..];
+            Self::mul_by_karatsuba(&mut t, x0, y1);
+            unsafe {
+                Self::add_at(z.as_mut_ptr(), t.as_ptr(), k, t.len(), z.len());
+            }
+            
+            // add xi*y0<<i, xi*y1*b<<(i+k)
+            zero_count = 0;
+            for &ele in y0.iter().rev() { if ele != 0 {break;} zero_count += 1};
+            let y0 = &y0[..(y0.len() - zero_count)];
+            for i in (k..x.len()).step_by(k) {
+                let xi = &x[i..];
+                let xi = if xi.len() > k {
+                    &xi[..k]
+                } else {
+                    xi
+                };
+
+                zero_count = 0;
+                for &ele in xi.iter().rev() { if ele != 0 {break;} zero_count += 1};
+                let xi = &xi[..(xi.len() - zero_count)];
+                Self::mul_by_karatsuba(&mut t, xi, y0);
+                unsafe {
+                    Self::add_at(z.as_mut_ptr(), t.as_ptr(), i, t.len(), z.len());
+                }
+                Self::mul_by_karatsuba(&mut t, xi, y1);
+                unsafe {
+                    Self::add_at(z.as_mut_ptr(), t.as_ptr(), i + k, t.len(), z.len());
+                }
+            }
+        }
+        
+        Self::trim_head_zero_(z);
+    }
+
+    /// karatsuba multiplies x and y and leaves the result in z.
+    /// Both x and y must have the same length n and n must be a
+    /// power of 2. The result vector z must have len(z) >= 6*n.
+    /// The (non-normalized) result is placed in z[0 : 2*n].
+    unsafe fn karatsuba(z: *mut u32, x: *const u32, y: *const u32, xlen: usize, ylen: usize, zlen: usize) {
+        let n = ylen;
+
+        // Switch to basic multiplication if numbers are odd or small.
+        // (n is always even if karatsubaThreshold is even, but be
+        // conservative)
+        if (n & 1) != 0 || n < KARATSUBA_THRESHOLD || n < 2 {
+            Self::basic_mul(z, x, y, xlen, ylen);
+            return;
+        }
+        
+        // n&1 == 0 && n >= karatsubaThreshold && n >= 2
+
+        // Karatsuba multiplication is based on the observation that
+        // for two numbers x and y with:
+        //
+        //   x = x1*b + x0
+        //   y = y1*b + y0
+        //
+        // the product x*y can be obtained with 3 products z2, z1, z0
+        // instead of 4:
+        //
+        //   x*y = x1*y1*b*b + (x1*y0 + x0*y1)*b + x0*y0
+        //       =    z2*b*b +              z1*b +    z0
+        //
+        // with:
+        //
+        //   xd = x1 - x0
+        //   yd = y0 - y1
+        //
+        //   z1 =      xd*yd                    + z2 + z0
+        //      = (x1-x0)*(y0 - y1)             + z2 + z0
+        //      = x1*y0 - x1*y1 - x0*y0 + x0*y1 + z2 + z0
+        //      = x1*y0 -    z2 -    z0 + x0*y1 + z2 + z0
+        //      = x1*y0                 + x0*y1
+
+        // split x, y into "digits"
+        let n2 = n >> 1;// n2 >= 1
+        let (x1, x0, x0len, x1len) = (x.add(n2), x, n2, xlen - n2);// x = x1*b + y0
+        let (y1, y0, y0len, y1len) = (y.add(n2), y, n2, ylen - n2);// y = y1*b + y0
+
+        // z is used for the result and temporary storage:
+        //
+        //   6*n     5*n     4*n     3*n     2*n     1*n     0*n
+        // z = [z2 copy|z0 copy| xd*yd | yd:xd | x1*y1 | x0*y0 ]
+        //
+        // For each recursive call of karatsuba, an unused slice of
+        // z is passed in that has (at least) half the length of the
+        // caller's z.
+
+        // compute z0 and z2 with the result "in place" in z
+        Self::karatsuba(z, x0, y0, x0len, y0len, zlen);     // z0 = x0*y0
+        Self::karatsuba(z.add(n), x1, y1, x1len, y1len, zlen.saturating_sub(n)); // z2 = x1*y1
+
+        // compute xd (or the negative value if underflow occurs)
+        let mut s = 1;// sign of product xd*yd
+        let (xd, xdlen) = (z.add(n << 1), n2);
+        let tmp = std::cmp::min(xdlen, x1len);
+        if sub_vv_inner(xd, x1, x0, tmp) != 0 {
+            s = -s;
+            sub_vv_inner(xd, x0, x1, tmp);
+        }
+
+        // compute yd (or the negative value if underflow occurs)
+        let (yd, ydlen) = (z.add((n<<1) + n2), n.saturating_sub(n2));
+        let tmp = std::cmp::min(ydlen, std::cmp::min(y0len, y1len));
+        if sub_vv_inner(yd, y0, y1, tmp) != 0 {
+            s = -s;
+            sub_vv_inner(yd, y1, y0, tmp);
+        }
+
+        // p = (x1-x0)*(y0-y1) == x1*y0 - x1*y1 - x0*y0 + x0*y1 for s > 0
+        // p = (x0-x1)*(y0-y1) == x0*y0 - x0*y1 - x1*y0 + x1*y1 for s < 0
+        let (p, plen) = (z.add((n<<1)+n), zlen - ((n<<1)+n));
+        Self::karatsuba(p, xd, yd, xdlen, ydlen, plen);
+
+        // save original z2:z0
+        // (ok to use upper half of z since we're done recursing)
+        let (r, rlen) = (z.add(n<<2), zlen - (n<<2));
+        let tmp = std::cmp::min(n<<1, rlen);
+        for i in 0..tmp {
+            r.add(i).write(z.add(i).read());
+        }
+
+        // add up all partial products
+        //
+        //   2*n     n     0
+        // z = [ z2  | z0  ]
+        //   +    [ z0  ]
+        //   +    [ z2  ]
+        //   +    [  p  ]
+        //
+        Self::karatsuba_add(z.add(n2), r, n);
+        Self::karatsuba_add(z.add(n2), r.add(n), n);
+        if s > 0 {
+            Self::karatsuba_add(z.add(n2), p, n);
+        } else {
+            Self::karatsuba_sub(z.add(n2), p, n);
+        }
+    }
+    
+    /// karatsubaLen computes an approximation to the maximum k <= n such that
+    /// k = p<<i for a number p <= threshold and an i >= 0. Thus, the
+    /// result is the largest number that can be divided repeatedly by 2 before
+    /// becoming about the value of threshold.
+    fn karatsuba_len(mut n: usize, threshold: usize) -> usize {
+        let mut i = 0;
+        while n > threshold {
+            n >>= 1;
+            i += 1;
+        }
+        
+        n << i
+    }
+    
+    unsafe fn basic_sqr(z: *mut u32, x: *const u32, xlen: usize, zlen: usize) {
+        let mut t = Vec::with_capacity(xlen);
+        t.resize(xlen << 1, 0);
+        let (z1, z0) = mul_ww(x.read(), x.read());
+        z.add(1).write(z1);
+        z.write(z0);
+        
+        for i in 1..xlen {
+            let d = x.add(i).read();
+            let (z1, z0) = mul_ww(d, d);
+            z.add((i<<1) + 1).write(z1);
+            z.add(i<<1).write(z0);
+            let z0 = add_mul_vvw_inner(t.as_mut_ptr().add(i), x, d, i);
+            t[i << 1] = z0;
+        }
+        
+        let tmp = (xlen << 1) - 1;
+        t[tmp] = shl_vu_inner(t.as_mut_ptr().add(1), t.as_mut_ptr().add(1), 1, tmp-1);
+        add_vv_inner(z, z, t.as_ptr(), std::cmp::min(zlen, xlen << 1));
+    }
+    
+    unsafe fn karatsuba_sqr(z: *mut u32, x: *const u32, xlen: usize, zlen: usize) {
+        let n = xlen;
+        if (n & 1) != 0 || n < KARATSUBA_THRESHOLD || n < 2 {
+            Self::basic_sqr(z, x, xlen, zlen);
+            return;
+        }
+        
+        let n2 = n >> 1;
+        let (x1, x0, x1len, x0len) = (x.add(n2), x, n - n2, n2);
+        Self::karatsuba_sqr(z, x0, x0len, zlen);
+        Self::karatsuba_sqr(z.add(n), x1, x1len, zlen - n);
+        
+        // s = sign(xd*yd) == -1 for xd != 0; s == 1 for xd == 0
+        let (xd, xdlen) = (z.add(n<<1), n2);
+        let tmp = std::cmp::min(xdlen, std::cmp::min(x0len, x1len));
+        if sub_vv_inner(xd, x1, x0, tmp) != 0 {
+            sub_vv_inner(xd, x0, x1, tmp);
+        }
+        
+        let (p, plen) = (z.add((n<<1) + n), zlen - ((n<<1) + n));
+        Self::karatsuba_sqr(p, xd, xdlen, plen);
+        let (r, rlen) = (z.add(n<<2), zlen - (n<<2));
+        let tmp = std::cmp::min(rlen, n<<1);
+        (0..tmp).for_each(|i| {
+            r.add(i).write(z.add(i).read());
+        });
+        
+        Self::karatsuba_add(z.add(n2), r, n);
+        Self::karatsuba_add(z.add(n2), r.add(n), n);
+        Self::karatsuba_sub(z.add(n2), p, n); // s == -1 for p != 0; s == 1 for p == 0
+    }
+    
+    // addAt implements z += x<<(_W*i); z must be long enough.
+    unsafe fn add_at(z: *mut u32, x: *const u32, i: usize, xlen: usize, zlen: usize) {
+        if xlen > 0 {
+            let c = add_vv_inner(z.add(i), z.add(i), x, xlen);
+            if c != 0 {
+                let j = i + xlen;
+                if j < zlen {
+                    add_vw_inner(z.add(j), z.add(j), c, zlen - j);
+                }
+            }
+        }
+    }
+    
+    /// result = self * self
+    pub fn sqr(&self) -> Nat {
+        let mut z = Vec::new();
+        Self::sqr_v(&mut z, self.as_slice());
+        Nat::from(z)
+    }
+    
+    /// z = x * x
+    fn sqr_v(z: &mut Vec<u32>, x: &[u32]) {
+        z.clear();
+        if x.len() == 0 {
+            return;
+        } else if x.len() == 1 {
+            let d = x[0];
+            let (z1, z0) = mul_ww(d, d);
+            z.push(z0);
+            z.push(z1);
+            Self::trim_head_zero_(z);
+            return;
+        }
+        
+        if x.len() < BASIC_SQRT_HRESHOLD {
+            z.resize(x.len() << 1, 0);
+            unsafe {
+                Self::basic_mul(z.as_mut_ptr(), x.as_ptr(), x.as_ptr(), x.len(), x.len());
+            }
+            Self::trim_head_zero_(z);
+            return;
+        }
+        
+        if x.len() < KARATSUBA_SQRT_HRESHOLD {
+            z.resize(x.len() << 1, 0);
+            unsafe {
+                Self::basic_sqr(z.as_mut_ptr(), x.as_ptr(), x.len(), z.len());
+            }
+            Self::trim_head_zero_(z);
+            return;
+        }
+
+        // Use Karatsuba multiplication optimized for x == y.
+        // The algorithm and layout of z are the same as for mul.
+
+        // z = (x1*b + x0)^2 = x1^2*b^2 + 2*x1*x0*b + x0^2
+        let k = Self::karatsuba_len(x.len(), KARATSUBA_SQRT_HRESHOLD);
+        let x0 = &x[0..k];
+        z.resize(std::cmp::max(k*6, x.len() * 2), 0u32);
+        unsafe {
+            Self::karatsuba_sqr(z.as_mut_ptr(), x0.as_ptr(), x0.len(), z.len());
+        }
+        
+        z.truncate(x.len() << 1);
+        z.iter_mut().skip(k<<1).for_each(|e| {*e = 0});
+        
+        if k < x.len() {
+            let mut t = Vec::with_capacity(k << 1);
+            let mut zero_count = 0;
+            for &ele in x0.iter().rev() {if ele != 0 {break;} zero_count += 1;}
+            let x0 = &x0[..(x0.len() - zero_count)];
+            let x1 = &x[k..];
+            Self::mul_by_karatsuba(&mut t, x0, x1);
+            unsafe {
+                Self::add_at(z.as_mut_ptr(), t.as_ptr(), k, t.len(), z.len());
+                Self::add_at(z.as_mut_ptr(), t.as_ptr(), k, t.len(), z.len());// z = 2*x1*x0*b + x0^2
+            }
+            Self::sqr_v(&mut t, x1);
+            unsafe {
+                Self::add_at(z.as_mut_ptr(), t.as_ptr(), k << 1, t.len(), z.len());
+            }
+        }
+        
+        Self::trim_head_zero_(z);
+    }
+    
+    /// this code convert from golang  
+    /// montgomery computes z mod m = x*y*2**(-n*_W) mod m,
+    /// assuming k = -1/m mod 2**_W.  
+    /// z is used for storing the result which is returned;  
+    /// See Gueron, "Efficient Software Implementations of Modular Exponentiation".  
+    /// https://eprint.iacr.org/2011/239.pdf  
+    /// In the terminology of that paper, this is an "Almost Montgomery Multiplication":  
+    /// x and y are required to satisfy 0 <= z < 2**(n*_W) and then the result  
+    /// z is guaranteed to satisfy 0 <= z < 2**(n*_W), but it may not be < m.  
+    fn montgomery(z: &mut Vec<u32>, x: &Vec<u32>, y: &Vec<u32>, m: &Vec<u32>, k: u32, n: usize) {
+        if x.len() != n || y.len() != n || m.len() != n {
+            panic!("mismatched montgomery number lengths");
+        }
+        
+        z.clear();
+        z.resize(n<<1, 0);
+        let mut c = 0u32;
+        
+        for i in 0..n {
+            let d = y[i];
+            let c2 = add_mul_vvw(&mut z[i..(n+i)], x, d);
+            let t = z[i].wrapping_mul(k);
+            let c3 = add_mul_vvw(&mut z[i..(n+i)], m, t);
+            let cx = c.wrapping_add(c2);
+            let cy = cx.wrapping_add(c3);
+            z[n + i] = cy;
+            c = if cx < c2 || cy < c3 {1} else {0};
+        }
+        
+        if c != 0 {
+            unsafe {
+                let z0 = z.as_mut_ptr();
+                let z1 = z0.add(n);
+                sub_vv_inner(z0, z1, m.as_ptr(), n);
+            }
+        } else {
+            for i in 0..n {
+                z[i] = z[n+i];
+            }
+        }
+        z.truncate(n);
+    }
+    
+    /// $z = x^y \mod m$
+    fn exp_montogomery(z: &mut Nat, x: &Nat, y: &Nat, m: &Nat) {
+        let num_words = m.as_vec().len();
+        let x = if x.as_vec().len() > num_words {
+            x.clone() % m.clone()
+        } else {
+            x.deep_clone()
+        };
+        if x.as_vec().len() < num_words {
+            x.as_mut_vec().resize(num_words, 0);
+        }
+        // Ideally the precomputations would be performed outside, and reused
+        // k0 = -m**-1 mod 2**_W. Algorithm from: Dumas, J.G. "On Newton–Raphson
+        // Iteration for Multiplicative Inverses Modulo Prime Powers".
+        let (mut i, mut k0, mut t) = (1, 2u32.wrapping_sub(m.as_vec()[0]), m.as_vec()[0].wrapping_sub(1));
+        while i < 32 {
+            t = t.wrapping_mul(t);
+            k0 = k0.wrapping_mul(t.wrapping_add(1));
+            i <<= 1;
+        }
+        k0 = k0.wrapping_neg();
+        
+        // RR = 2**(2*_W*len(m)) mod m
+        let mut rr = Nat::from(1u32);
+        rr <<= num_words << 6;
+        rr %= m.clone();
+        if rr.as_vec().len() < num_words {
+            rr.as_mut_vec().resize(num_words, 0);
+        }
+        let one = Nat::from(1u32);
+        one.as_mut_vec().resize(num_words, 0);
+        
+        let n:usize = 4;
+        
+        let powers = [
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+        ];
+        Self::montgomery(powers[0].as_mut_vec(), one.as_vec(), rr.as_vec(), m.as_vec(), k0, num_words);
+        Self::montgomery(powers[1].as_mut_vec(), x.as_vec(), rr.as_vec(), m.as_vec(), k0, num_words);
+        (2..(1 << n)).for_each(|i| {
+            Self::montgomery(powers[i].as_mut_vec(), powers[i-1].as_vec(), powers[1].as_vec(), m.as_vec(), k0, num_words);
+        });
+
+        // initialize z = 1 (Montgomery 1)
+        let zz = &mut rr;
+        z.clear();
+        z.as_mut_vec().extend(powers[0].as_vec().iter());
+        zz.clear();
+        zz.as_mut_vec().resize(num_words, 0);
+        
+        let (mut tmpz, mut tmpzz, mut is_switch) = (z, zz, false);
+        // same windowed exponent, but with Montgomery multiplications
+        for (i, &ye) in y.iter().enumerate().rev() {
+            let mut yi = ye;
+            for j in (0..32).step_by(n) {
+                if i != (y.as_vec().len() - 1) || j != 0 {
+                    Self::montgomery(tmpzz.as_mut_vec(), tmpz.as_vec(), tmpz.as_vec(), m.as_vec(), k0, num_words);
+                    Self::montgomery(tmpz.as_mut_vec(), tmpzz.as_vec(), tmpzz.as_vec(), m.as_vec(), k0, num_words);
+                    Self::montgomery(tmpzz.as_mut_vec(), tmpz.as_vec(), tmpz.as_vec(), m.as_vec(), k0, num_words);
+                    Self::montgomery(tmpz.as_mut_vec(), tmpzz.as_vec(), tmpzz.as_vec(), m.as_vec(), k0, num_words);
+                }
+                
+                Self::montgomery(tmpzz.as_mut_vec(), tmpz.as_vec(), powers[((yi as usize) >> (32 - n))].as_vec(), m.as_vec(), k0, num_words);
+                let tmp = tmpz;
+                tmpz = tmpzz;
+                tmpzz = tmp;
+                is_switch = !is_switch;
+                yi <<= n;
+            }
+        }
+        
+        // convert to regular number
+        Self::montgomery(tmpzz.as_mut_vec(), tmpz.as_vec(), one.as_vec(), m.as_vec(), k0, num_words);
+        if *tmpzz >= *m {
+            *tmpzz -= m.clone();
+            if *tmpzz >= *m {
+                *tmpzz %= m.clone();
+            }
+        }
+        tmpzz.trim_head_zero();
+        
+        if !is_switch {
+            tmpz.clear();
+            tmpz.as_mut_vec().extend(tmpzz.iter());
+        }
+    }
+    
+    fn exp_windowed(o: &mut Nat, x: &Nat, y: &Nat, m: &Nat) {
+        let n = 4;
+
+        let powers = [
+            Nat::from(1u32), x.deep_clone(), Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+            Nat::from(0u32), Nat::from(0u32),Nat::from(0u32),Nat::from(0u32),
+        ];
+        
+        for i in (2..(1<<4)).step_by(2) {
+            let (p2, p, p1) = (&powers[i>>1], &powers[i], &powers[i+1]);
+            Self::sqr_v(p.as_mut_vec(), p2.as_slice());
+            let r = p.clone() % m.clone();
+            p.as_mut_vec().clear();
+            p.as_mut_vec().extend(r.iter());
+            Self::mul_by_karatsuba(p1.as_mut_vec(), p.as_slice(), x.as_slice());
+            let r = p1.clone() % m.clone();
+            p1.as_mut_vec().clear();
+            p1.as_mut_vec().extend(r.iter());
+        }
+        
+        let mut z = Nat::from(1u32);
+        let mut buf = Nat::with_capacity(32);
+        let (mut z, mut zz) = (&mut z, &mut buf);
+        
+        let ylen = y.as_mut_vec().len();
+        for (i, &ele) in y.iter().enumerate().rev() {
+            let mut yi = ele;
+            for j in (0..32).step_by(n) {
+                if i != (ylen - 1) || j != 0 {
+                    Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+                    let tmp = z; z = zz; zz = tmp;
+                    let r = z.clone() % m.clone();
+                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                    
+                    Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+                    let tmp = z; z = zz; zz = tmp;
+                    let r = z.clone() % m.clone();
+                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+
+                    Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+                    let tmp = z; z = zz; zz = tmp;
+                    let r = z.clone() % m.clone();
+                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+
+                    Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+                    let tmp = z; z = zz; zz = tmp;
+                    let r = z.clone() % m.clone();
+                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                }
+                
+                Self::mul_by_karatsuba(zz.as_mut_vec(), z.as_slice(), powers[(yi as usize) >> (32 - n)].as_slice());
+                let tmp = z; z = zz; zz = tmp;
+                let r = z.clone() % m.clone();
+                z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                yi <<= n;
+            }
+        }
+        
+        z.trim_head_zero();
+        o.clear();
+        o.as_mut_vec().extend(z.iter());
+    }
+    
+    /// $self^b \mod n$ same as `pow_mod` 
+    pub fn exp(&self, b: &Nat, n: &Nat) -> Nat {
+        if self.is_nan() || b.is_nan() || n.is_nan() { return Nat::nan(); }
+        
+        if n.as_vec().len() == 1 && n.as_vec()[0] == 1 {
+            return Nat::from(0u32);
+        }
+        
+        if b.as_vec().len() == 1 {
+            if b.as_vec()[0] == 0 {
+                return Nat::from(1u32);
+            } else if b.as_vec()[0] == 1 {
+                return self.clone() % n.clone();
+            }
+        }
+        
+        let mut z = Nat::with_capacity(n.as_vec().len());
+        z.as_mut_vec().extend(self.iter());
+        // If the base is non-trivial and the exponent is large, we use
+        // 4-bit, windowed exponentiation. This involves precomputing 14 values
+        // (x^2...x^15) but then reduces the number of multiply-reduces by a
+        // third. Even for a 32-bit exponent, this reduces the number of
+        // operations. Uses Montgomery method for odd moduli.
+        if (self.as_vec().len() > 1 || (self.as_vec().len() == 1 && self.as_vec()[0] > 1)) && b.as_vec().len() > 1 && (n.as_vec().len() > 1 || n.as_vec()[0] > 0) {
+            if (n.as_vec()[0] & 1) == 1 {
+                Self::exp_montogomery(&mut z, self, b, n);
+            } else {
+                Self::exp_windowed(&mut z, self, b, n);
+            }
+            return z;
+        }
+
+        let mut v = *b.as_vec().last().unwrap();
+        let shift = v.leading_zeros() + 1;
+        v <<= shift;
+        let mask = 1u32 << (32 - 1);
+        let w = 32 - shift;
+        
+        let mut zz = Nat::with_capacity(32);
+        let (mut z, mut zz) = (&mut z, &mut zz);
+        for _ in 0..w {
+            Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+            let tmp = z; z = zz; zz = tmp;
+            if (v & mask) != 0 {
+                Self::mul_by_karatsuba(zz.as_mut_vec(), z.as_slice(), self.as_slice());
+                let tmp = z; z = zz; zz = tmp;
+            }
+            
+            if !(n.as_vec().len() == 1 && n.as_vec()[0] == 0) {
+                let r = z.clone() % n.clone();
+                z.as_mut_vec().clear();
+                z.as_mut_vec().extend(r.iter());
+            }
+            
+            v <<= 1;
+        }
+        
+        for &be in b.iter().rev().skip(1) {
+            let mut v = be;
+            for _ in 0..32 {
+                Self::sqr_v(zz.as_mut_vec(), z.as_slice());
+                let tmp = z; z = zz; zz = tmp;
+
+                if (v & mask) != 0 {
+                    Self::mul_by_karatsuba(zz.as_mut_vec(), z.as_slice(), self.as_slice());
+                    let tmp = z; z = zz; zz = tmp;
+                }
+
+                if !(n.as_vec().len() == 1 && n.as_vec()[0] == 0) {
+                    let r = z.clone() % n.clone();
+                    z.as_mut_vec().clear();
+                    z.as_mut_vec().extend(r.iter());
+                }
+
+                v <<= 1;
+            }
+        }
+        
+        z.trim_head_zero();
+        z.deep_clone()
     }
 } // Nat
 
