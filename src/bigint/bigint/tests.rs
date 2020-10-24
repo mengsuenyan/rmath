@@ -259,3 +259,32 @@ fn bigint_mod_inverse() {
         assert_eq!(inv, BigInt::from(1));
     }
 }
+
+#[test]
+fn bigint_solve_mod_linear_equation() {
+    // (a,b,n)
+    let cases = [
+        (("14", "30", "100"), vec!["0x2d", "0x5f"]),
+        (("1234567","1", "458948883992"), vec!["0x3564cd46f"]),
+         (("239487239847","1", 
+           "2410312426921032588552076022197566074856950548502459942654116941958108831682612228890093858261341614673227141477904012196503648957050582631942730706805009223062734745341073406696246014589361659774041027169249453200378729434170325843778659198143763193776859869524088940195577346119843545301547043747207749969763750084308926339295559968882457872412993810129130294592999947926365264059284647209730384947211681434464714438488520940127459844288859336526896320919633919"), 
+          vec!["0x698588a50632e78c394b1bfd6a8193de984a09ae10c0be7d9ab21c657565b2b958367aaa0f629bc02d9fd18665f92d04280f07da8ef40bd6b4752bc556624c1104404fbc0cf771c365869d97a39fbd54a2b0b652f73239060c8b11bbe47673f5d169ab9ea745cdc2245cdbd0932b67c8dd4bb23e1430f98626664388ad33d8507e99584f15dc541cecb09f9594384b244abc69dd76f792ba3c1ac0e2deff6a9324f17b5f71fa4176084ad6101864074dde492221c6991d3132efc745814e4c8c"]),
+        (("-10","1", "13"), vec!["0x9"]), // issue #16984
+        (("10","1", "-13"), vec!["0x4"]),
+         (("-17","1", "-13"), vec!["0x3"]),
+    ];
+    
+    cases.iter().for_each(|(equa, res)| {
+        let a: BigInt = equa.0.parse().unwrap();
+        let b: BigInt = equa.1.parse().unwrap();
+        let n: BigInt = equa.2.parse().unwrap();
+        let mut x = a.solve_mod_linear_equation(b, n).unwrap();
+        x.sort_by(|a, b| {
+            a.partial_cmp(b).unwrap()
+        });
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        x.iter().for_each(|e| {left.push(format!("{:#x}", e));});
+        res.iter().for_each(|e| {right.push(e.to_string());});
+        assert_eq!(left, right, "case: {}", equa.0);
+    });
+}

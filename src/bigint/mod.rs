@@ -24,4 +24,10 @@ mod bigint_macro;
 mod bigint;
 pub use bigint::BigInt;
 
+#[cfg(not(any(rmath_sse2 = "support")))]
 mod arith_generic;
+
+#[cfg(rmath_sse2 = "support")]
+mod arith_amd64;
+
+mod arith;

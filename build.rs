@@ -21,6 +21,10 @@ fn main() {
         println!("cargo:rustc-cfg=rmath_avx2=\"support\"");
     }
     
+    // if std::is_x86_feature_detected!("sse2") {
+    //     println!("cargo:rustc-cfg=rmath_sse2=\"support\"");
+    // }
+    
     if std::is_x86_feature_detected!("rdseed") {
         println!("cargo:rustc-cfg=rmath_rdseed=\"support\"");
     }

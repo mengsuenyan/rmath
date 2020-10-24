@@ -1,8 +1,12 @@
 //! this is convert from the golang source code.
+//! 
+//! 
+//! test nat_sqr              ... bench:      13,988 ns/iter (+/- 1,483)
+//! test nat_sqr_by_pow       ... bench:      25,861 ns/iter (+/- 3,706)
+//! test nat_pow_mod_by_exp   ... bench:   4,120,850 ns/iter (+/- 272,778)
+//! test nat_mul_by_karatsuba ... bench:     282,316 ns/iter (+/- 36,541)
 
 #![allow(unused)]
-
-use std::ops::Add;
 
 /// z = x*y   
 /// (z >> 32, z & 0xffffffff)  

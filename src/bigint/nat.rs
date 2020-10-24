@@ -11,7 +11,7 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
     Div, DivAssign, Mul, MulAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign,
     BitXor, BitXorAssign, Not, Rem, RemAssign};
 use crate::rand::IterSource;
-use crate::bigint::arith_generic::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
+use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
 
 const KARATSUBA_THRESHOLD: usize = 40;
 const BASIC_SQRT_HRESHOLD: usize = 20;
