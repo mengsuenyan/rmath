@@ -225,6 +225,9 @@ impl BigInt {
     /// ax=b(mod n)有一个解的值位x0, 则x0=x'(b/d) mod n;  
     /// 假设方程ax=b(mod n)有解(即d|b, d=gcd(a,n)), 且x0是该方程的任意一个解. 因此, 该方程对模
     /// n恰有d个不同的解, 分别为xi=x0+i(n/d), 这里i=0,1,...,d-1;  
+    /// 
+    /// $self * x \equiv 1 \mod other$  
+    /// return x
     pub fn mod_inverse(&self, other: BigInt) -> BigInt {
         if self.is_nan() || other.is_nan() {
             BigInt::nan()
@@ -238,7 +241,7 @@ impl BigInt {
             let g = if self.is_negative() {
                 self.rem_euclid(n.clone())
             } else {
-                self.deep_clone()
+                self.clone()
             };
             
             // g*x + n*y = d
@@ -248,6 +251,51 @@ impl BigInt {
                 x
             } else {
                 x
+            }
+        }
+    }
+    
+    /// $self * x \equiv b \mod n$
+    /// 
+    /// return x
+    pub fn solve_mod_linear_equation(&self, b: BigInt, n: BigInt) -> Option<Vec<BigInt>> {
+        if self.is_nan() || b.is_nan() || n.is_nan() {
+            None
+        } else {
+            let n = if n.is_negative() {
+                n.abs()
+            } else {
+                n
+            };
+            
+            let a = if self.is_negative() {
+                self.rem_euclid(n.clone())
+            } else {
+                self.clone()
+            };
+            
+            let (d, mut x, _y) = a.gcd(n.clone());
+            let zero = BigInt::from(0u32);
+            if d > zero {
+                if (b == zero) || (b.clone() % d.clone() == 0u32) {
+                    x *= b.clone() / d.clone();
+                    let x0 = x.rem_euclid(n.clone());
+                    let mut i = zero;
+                    let mut res = Vec::new();
+                    let n_d = n.clone() / d.clone();
+                    let one = BigInt::from(1u32);
+                    while i < d {
+                        let i_n_d = i.clone() * n_d.clone();
+                        let tmp = x0.clone() + i_n_d;
+                        res.push(tmp.rem_euclid(n.clone()));
+                        i += one.clone();
+                    }
+                    Some(res)
+                } else {
+                    None
+                }
+            } else {
+                None
             }
         }
     }
