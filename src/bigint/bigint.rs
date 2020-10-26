@@ -311,10 +311,10 @@ impl BigInt {
         } else {
             // x + (-y) == x - y == -(y - x)
             // (-x) + y == y - x == -(x - y)
-            self.nat -= rhs.nat.clone();
             if self.nat < rhs.nat {
                 neg = !neg;
             }
+            self.nat -= rhs.nat;
         }
         
         if self.is_nan() || self.nat == 0u32 {
@@ -325,34 +325,23 @@ impl BigInt {
     }
     
     fn sub_inner(&mut self, rhs: Self) {
-        match (self.sign, rhs.sign) {
-            (Natural, Natural) => {
-                self.sign = match self.nat.partial_cmp(&rhs.nat) {
-                    None => Natural,
-                    Some(Ordering::Less) => Negative,
-                    Some(Ordering::Greater) => Natural,
-                    Some(Ordering::Equal) => Natural,
-                };
-                self.nat -= rhs.nat;
-            },
-            (Negative, Negative) => {
-                self.sign = match self.nat.partial_cmp(&rhs.nat) {
-                    None => Natural,
-                    Some(Ordering::Less) => Natural,
-                    Some(Ordering::Greater) => Negative,
-                    Some(Ordering::Equal) => Natural,
-                };
-                self.nat -= rhs.nat;
-            },
-            (Natural, Negative) => {
-                self.sign = Natural;
-                self.nat += rhs.nat;
-            },
-            (Negative, Natural) => {
-                self.sign = Negative;
-                self.nat += rhs.nat;
-            },
-        };
+        let mut neg = self.sign;
+        if self.sign != rhs.sign {
+            // x - (-y) == x + y
+            // (-x) - y == -(x + y)
+            self.nat += rhs.nat;
+        } else {
+            if self.nat < rhs.nat {
+                neg = !neg;
+            }
+            self.nat -= rhs.nat;
+        }
+        
+        if self.is_nan() || self.nat == 0u32 {
+            self.sign = Natural;
+        } else {
+            self.sign = neg;
+        }
     }
     
     fn shr_inner(&mut self, rhs: usize) {
