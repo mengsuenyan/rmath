@@ -384,26 +384,60 @@ impl BigInt {
     }
     
     fn bitand_inner(&mut self, rhs: Self) {
-        self.nat &= rhs.nat;
-        self.sign = match self.nat.partial_cmp(&0u32) {
-            None => Natural,
-            Some(Ordering::Equal) => Natural,
-            _ => match (self.sign, rhs.sign) {
-                (Negative, Negative) => Negative,
-                _ => Natural,
+        if self.sign == rhs.sign {
+            if self.sign == Negative {
+                // (-x) & (-y) == ^(x-1) & ^(y-1) == ^((x-1) | (y-1)) == -(((x-1) | (y-1)) + 1)
+                self.nat -= 1u32;
+                let rhs1 = rhs.nat - 1u32;
+                self.nat |= rhs1;
+                self.nat += 1u32;
+                self.sign = if self.is_nan() {Natural } else {Negative};
+            } else {
+                // x & y == x & y
+                self.nat &= rhs.nat;
+                self.sign = Natural;
             }
+        } else {
+            let rhs1 = if self.sign == Negative {
+                let rhs1 = self.nat.clone() - 1u32;
+                self.nat.clear();
+                self.nat.as_mut_vec().extend(rhs.nat.iter());
+                rhs1
+            } else {
+                rhs.nat - 1u32
+            };
+            self.nat.and_not_assign(rhs1);
+            self.sign = Natural;
         }
     }
     
     fn bitor_inner(&mut self, rhs: Self) {
-        self.nat |= rhs.nat;
-        self.sign = match self.nat.partial_cmp(&0u32) {
-            None => Natural,
-            Some(Ordering::Equal) => Natural,
-            _ => match (self.sign, rhs.sign) {
-                (Natural, Natural) => Natural,
-                _ => Negative,
+        if self.sign == rhs.sign {
+            if self.sign == Negative {
+                // (-x) | (-y) == ^(x-1) | ^(y-1) == ^((x-1) & (y-1)) == -(((x-1) & (y-1)) + 1)
+                self.nat -= 1u32;
+                let rhs1 = rhs.nat - 1u32;
+                self.nat &= rhs1;
+                self.nat += 1u32;
+                self.sign = if self.is_nan() {Natural} else {Negative};
+            } else {
+                // x | y == x | y
+                self.nat |= rhs.nat;
+                self.sign = Natural;
             }
+        } else {
+            let rhs1 = if self.sign == Negative {
+                let rhs1 = self.nat.clone() - 1u32;
+                self.nat.clear();
+                self.nat.as_mut_vec().extend(rhs.nat.iter());
+                rhs1
+            } else {
+                rhs.nat - 1u32
+            };
+            // x | (-y) == x | ^(y-1) == ^((y-1) &^ x) == -(^((y-1) &^ x) + 1)
+            self.nat.and_not_assign(rhs1);
+            self.nat += 1u32;
+            self.sign = if self.nat.is_nan() {Natural} else {Negative};
         }
     }
     

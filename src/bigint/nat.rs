@@ -177,6 +177,21 @@ impl Nat {
             (other, self, true)
         }
     }
+    
+    /// same as the operator `&^` in the golang
+    pub fn and_not(self, rhs: Nat) -> Nat {
+        let mut nat = self.deep_clone();
+        nat.and_not_assign(rhs);
+        nat
+    }
+    
+    pub fn and_not_assign(&mut self, rhs: Nat) {
+        self.iter_mut().zip(rhs.iter()).for_each(|(x, &y) | {
+            *x = (*x) & (!y);
+        });
+        
+        self.trim_head_zero();
+    }
 
     fn check_base(s: &str) -> Result<(usize, usize), NatError> {
         let (mut i, mut itr) = (0, s.chars());
