@@ -1472,40 +1472,35 @@ impl Nat {
         let mut buf = Nat::with_capacity(32);
         let (mut z, mut zz) = (&mut z, &mut buf);
         
-        let ylen = y.as_mut_vec().len();
+        let ylen = y.as_vec().len();
         for (i, &ele) in y.iter().enumerate().rev() {
             let mut yi = ele;
             for j in (0..32).step_by(n) {
                 if i != (ylen - 1) || j != 0 {
                     Self::sqr_v(zz.as_mut_vec(), z.as_slice());
                     let tmp = z; z = zz; zz = tmp;
-                    let r = z.clone() % m.clone();
-                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                    *z %= m.clone();
                     
                     Self::sqr_v(zz.as_mut_vec(), z.as_slice());
                     let tmp = z; z = zz; zz = tmp;
-                    let r = z.clone() % m.clone();
-                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                    *z %= m.clone();
 
                     Self::sqr_v(zz.as_mut_vec(), z.as_slice());
                     let tmp = z; z = zz; zz = tmp;
-                    let r = z.clone() % m.clone();
-                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                    *z %= m.clone();
 
                     Self::sqr_v(zz.as_mut_vec(), z.as_slice());
                     let tmp = z; z = zz; zz = tmp;
-                    let r = z.clone() % m.clone();
-                    z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                    *z %= m.clone();
                 }
                 
                 Self::mul_by_karatsuba(zz.as_mut_vec(), z.as_slice(), powers[(yi as usize) >> (32 - n)].as_slice());
                 let tmp = z; z = zz; zz = tmp;
-                let r = z.clone() % m.clone();
-                z.as_mut_vec().clear(); z.as_mut_vec().extend(r.iter());
+                *z %= m.clone();
                 yi <<= n;
             }
         }
-        
+
         z.trim_head_zero();
         o.clear();
         o.as_mut_vec().extend(z.iter());
@@ -1523,7 +1518,11 @@ impl Nat {
             if b.as_vec()[0] == 0 {
                 return Nat::from(1u32);
             } else if b.as_vec()[0] == 1 {
-                return self.clone() % n.clone();
+                if n.as_vec().len() == 1 && n.as_vec()[0] == 0 {
+                    return self.deep_clone();
+                } else {
+                    return self.clone() % n.clone();
+                }
             }
         }
         
@@ -1534,7 +1533,7 @@ impl Nat {
         // (x^2...x^15) but then reduces the number of multiply-reduces by a
         // third. Even for a 32-bit exponent, this reduces the number of
         // operations. Uses Montgomery method for odd moduli.
-        if (self.as_vec().len() > 1 || (self.as_vec().len() == 1 && self.as_vec()[0] > 1)) && b.as_vec().len() > 1 && (n.as_vec().len() > 1 || n.as_vec()[0] > 0) {
+        if (self.as_vec().len() > 1 || self.as_vec()[0] > 1) && b.as_vec().len() > 1 && (n.as_vec().len() > 1 || n.as_vec()[0] > 0) {
             if (n.as_vec()[0] & 1) == 1 {
                 Self::exp_montogomery(&mut z, self, b, n);
             } else {

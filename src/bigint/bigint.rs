@@ -491,7 +491,50 @@ impl BigInt {
     /// $self^b$ if n == 0 and b > 0;  
     /// $1 if n == 0 and b <= 0$;  
     /// $nan$ if n > 0, b < 0 and x and n are not relatively prime;  
-
+    pub fn exp(&self, b: &BigInt, n: &BigInt) -> BigInt {
+        if self.is_nan() || b.is_nan() || n.is_nan() {
+            return BigInt::nan();
+        }
+        
+        let mut xwords = self.nat.clone();
+        if b.is_negative() {
+            if n == &0u32 {
+                return BigInt::from(1u32);
+            }
+            
+            // for y < 0 : $self^b \mod n$ = $(self^{-1})^{|y|} \mod n$
+            let inv = self.mod_inverse(n.clone());
+            if inv.is_nan() {
+                return inv;
+            }
+            
+            xwords = inv.nat.clone();
+        }
+        
+        let ywords = b.nat.clone();
+        let mwords = n.nat.clone();
+        let mut e = xwords.exp(&ywords, &mwords);
+        let is_neg = if !(e.as_vec().len() == 1 && e.as_vec()[0] == 0) && self.is_negative() && !(ywords.as_vec().len() == 1 && ywords.as_vec()[0] == 0)
+            && (ywords.as_vec()[0] & 1 == 1) {
+            true
+        } else {
+            false
+        };
+        
+        if is_neg && !(mwords.as_vec().len() == 1 && mwords.as_vec()[0] == 0) {
+            // c = self^b \mod |n| && 0 <= c < |m|
+            e -= mwords;
+            BigInt {
+                nat: e,
+                sign: Natural,
+            }
+        } else {
+            BigInt {
+                nat: e,
+                sign: if is_neg {Negative} else {Natural},
+            }
+        }
+    }
 }
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);
