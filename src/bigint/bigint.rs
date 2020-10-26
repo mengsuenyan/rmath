@@ -548,6 +548,59 @@ impl BigInt {
             }
         }
     }
+    
+    /// compute the Jacobi symbol $(\frac{self}{b})$, returned None if the self == nan, b == nan or b == 0
+    pub fn jacobi(&self, b: &BigInt) -> Option<isize> {
+        if self.is_nan() || b.is_nan() || b == &0u32 {
+            return None;
+        }
+        
+        let (mut a, mut b) = (self.deep_clone(), b.deep_clone());
+        let (mut a, mut b) = (&mut a, &mut b);
+        
+        let mut j = if b.is_negative() {
+            b.sign = Natural;
+            if a.is_negative() {
+                -1
+            } else {
+                1
+            }
+        } else {
+            1
+        };
+        
+        loop {
+            if *b == 1u32 {
+                return Some(j);
+            }
+            
+            if a.nat == 0u32 {
+                return Some(0);
+            }
+            
+            a.rem_euclid_inner(b.clone());
+            if a.nat == 0u32 {
+                return Some(0);
+            }
+            
+            let s = a.nat.trailling_zeros();
+            if (s & 1) != 0 {
+                let bmod8 = b.nat.as_vec()[0] & 7;
+                if bmod8 == 3 || bmod8 == 5 {
+                    j = -j;
+                }
+            }
+            
+            a.shr_inner(s);
+            if (b.nat.as_vec()[0] & 3) == 3 && (a.nat.as_vec()[0] & 3) == 3 {
+                j = -j;
+            }
+            
+            let tmp = a;
+            a = b;
+            b = tmp;
+        }
+    }
 }
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);

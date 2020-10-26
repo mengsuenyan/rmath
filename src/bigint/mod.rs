@@ -1,3 +1,9 @@
+//! ECDSA椭圆曲线数字签名算法: https://www.cnblogs.com/mengsuenyan/p/13816789.html
+//! 
+//! 椭圆加密数学基础: https://www.cnblogs.com/mengsuenyan/p/13156265.html
+//! 
+//! 数论相关: https://www.cnblogs.com/mengsuenyan/p/12969712.html
+//! 
 
 #[macro_use]
 mod nat_macro;

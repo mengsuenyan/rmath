@@ -439,3 +439,35 @@ fn bigint_exp() {
         assert_eq!(exp, out, "case: {}^{} mod {}", e.0, e.1, e.2);
     });
 }
+
+#[test]
+fn bigint_jacobi() {
+    // (x,y,out)
+    let cases = [
+        (0, 1, 1),
+        (0, -1, 1),
+        (1, 1, 1),
+        (1, -1, 1),
+        (0, 5, 0),
+        (1, 5, 1),
+        (2, 5, -1),
+        (-2, 5, -1),
+        (2, -5, -1),
+        (-2, -5, 1),
+        (3, 5, -1),
+        (5, 5, 0),
+        (-5, 5, 0),
+        (6, 5, 1),
+        (6, -5, 1),
+        (-6, 5, 1),
+        (-6, -5, -1),
+    ];
+    
+    cases.iter().for_each(|e| {
+        let x = BigInt::from(e.0);
+        let y = BigInt::from(e.1);
+        let out = Some(e.2);
+        let j = x.jacobi(&y);
+        assert_eq!(j, out, "case: jacobi({}, {})", x, y);
+    });
+}

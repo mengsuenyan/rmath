@@ -774,6 +774,7 @@ impl Nat {
         nat
     }
 
+    /// compute the number of consecutive least significant zero bits of self
     pub fn trailling_zeros(&self) -> usize {
         let mut cnt = 0;
         for &ele in self.iter() {
