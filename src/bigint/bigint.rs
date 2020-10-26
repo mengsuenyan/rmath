@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 
 use BISign::{Natural, Negative};
 use std::fmt::{Display, Formatter, Octal, Binary, LowerHex, UpperHex, Debug};
+use crate::rand::IterSource;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum BISign {
@@ -532,6 +533,18 @@ impl BigInt {
             BigInt {
                 nat: e,
                 sign: if is_neg {Negative} else {Natural},
+            }
+        }
+    }
+    
+    /// generate a random number that belong to the range [0, self),  returned nan if the self <= 0
+    pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> BigInt{
+        if self.is_nan() || self == &0u32 {
+            BigInt::nan()
+        } else {
+            BigInt {
+                nat: self.nat.random(rng),
+                sign: Natural,
             }
         }
     }
