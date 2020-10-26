@@ -601,6 +601,160 @@ impl BigInt {
             b = tmp;
         }
     }
+    
+    /// compute the square of `self`
+    pub fn sqr(&self) -> BigInt {
+        BigInt {
+            nat: self.nat.sqr(),
+            sign: Natural,
+        }
+    }
+
+    ///      (a^((p+1)/4))^2  mod p    
+    ///   == u^(p+1)          mod p    
+    ///   == u^2              mod p   
+    /// to calculate the square root of any quadratic residue mod p quickly for 3  
+    /// mod 4 primes.
+    fn mod_sqrt_3mod4(&self, p: &BigInt) -> BigInt {
+        let mut e = BigInt {
+            nat: p.nat.clone() + 1u32,
+            sign: Natural,
+        };
+        e.nat.shr_inner(&2);
+        self.exp(&e, p)
+    }
+
+    ///   alpha ==  (2*a)^((p-5)/8)    mod p 
+    ///   beta  ==  2*a*alpha^2        mod p  is a square root of -1 
+    ///   b     ==  a*alpha*(beta-1)   mod p  is a square root of a
+    /// to calculate the square root of any quadratic residue mod p quickly for 5
+    /// mod 8 primes.
+    fn mod_sqrt_5mod8(&self, p: &BigInt) -> BigInt {
+        let mut e = p.clone() >> 3;
+        let tx = self.clone() << 1;
+
+        let alpha = tx.exp(&e, p);
+        let beta = &mut e;
+        Nat::sqr_v(beta.nat.as_mut_vec(), alpha.nat.as_vec());
+        beta.sign = Natural;
+        
+        beta.rem_euclid_inner(p.clone());
+        beta.mul_inner(tx.clone());
+        beta.rem_euclid_inner(p.clone());
+        beta.sub_inner(BigInt::from(1u32));
+        beta.mul_inner(self.clone());
+        beta.rem_euclid_inner(p.clone());
+        beta.mul_inner(alpha.clone());
+        beta.rem_euclid_inner(p.clone());
+
+        e
+    }
+    
+    fn set_bits(&mut self, i: usize, is_set: bool) {
+        if self.is_negative() {
+            self.nat -= 1u32;
+            self.nat.set_bits(i, !is_set);
+            self.nat += 1u32;
+            self.sign = if self.nat > 0u32 {Negative} else {Natural};
+        } else {
+            self.nat.set_bits(i, is_set);
+        }
+    }
+    
+    /// compute the square root of a quadratic residue modulo any prime by the Tonelli-Shanks algorithm
+    fn mod_sqrt_tonelli_shanks(&self, p: &BigInt) -> BigInt {
+        // Break p-1 into s*2^e such that s is odd.
+        let mut s = BigInt {
+            nat: p.nat.clone() - 1u32,
+            sign: Natural,
+        };
+        
+        let e = s.nat.trailling_zeros();
+        s.nat.shr_inner(&e);
+
+        // find some non-square n
+        let mut n = BigInt::from(2u32);
+        while n.jacobi(p) != Some(-1) {
+            n.nat.add_inner_basic(&1u32);
+        }
+
+        // Core of the Tonelli-Shanks algorithm. Follows the description in
+        // section 6 of "Square roots from 1; 24, 51, 10 to Dan Shanks" by Ezra
+        // Brown:
+        // https://www.maa.org/sites/default/files/pdf/upload_library/22/Polya/07468342.di020786.02p0470a.pdf
+        
+        let mut tmp = BigInt {nat: s.nat.clone() + 1u32, sign: Natural};
+        tmp.nat.shr_inner(&1);
+        let mut y = self.exp(&tmp, p); // y = x^((s+1)/2)
+        let mut b = self.exp(&s, p); // b = x^s
+        let mut g = n.exp(&s, p);
+        let mut r = e;
+        loop {
+            tmp.sign =b.sign; tmp.nat.clear(); tmp.nat.as_mut_vec().extend(b.nat.iter());
+            let mut m = 0;
+            while tmp != 1u32 {
+                tmp.mul_inner(tmp.clone());
+                tmp.rem_euclid_inner(p.clone());
+                m += 1;
+            }
+            
+            if m == 0 {
+                return y;
+            }
+            
+            tmp.nat.clear(); tmp.nat.as_mut_vec().push(0);
+            tmp.set_bits(r - m -1, true);
+            let t = g.exp(&tmp, p);
+            g.sign = Natural; Nat::sqr_v(g.nat.as_mut_vec(), t.nat.as_slice());
+            g.rem_euclid_inner(p.clone());
+            y.mul_inner(t.clone());
+            y.rem_euclid_inner(p.clone());
+            b.mul_inner(g.clone());
+            b.rem_euclid_inner(p.clone());
+            r = m;
+        }
+    }
+    
+    /// compute the $y^2 \equiv self \mod p$, returned `None` if the square root is not exists;  
+    /// 
+    /// # Notes
+    /// 
+    /// 1. the computed result is right only the p is an odd prime;    
+    /// 2. the square roots of prime modules appear in pairs, if one of them is y, then the other is p-x;
+    /// 
+    /// # Panics
+    /// 
+    /// this method will panics when the p is not an odd prime 
+    pub fn mod_sqrt(&self, p: &BigInt) -> Option<BigInt> {
+        match self.jacobi(p) {
+            Some(-1) => {
+                None
+            },
+            Some(0) => {
+                Some(BigInt::from(0u32))
+            },
+            Some(1) => {
+                if (p.nat.as_vec()[0] & 1) != 1 {
+                    None
+                } else {
+                    let x = if self.is_negative() || self >= p {
+                        self.rem_euclid(p.clone())
+                    } else {
+                        self.clone()
+                    };
+
+                    if p.nat.as_vec()[0] % 4 == 3 {
+                        Some(x.mod_sqrt_3mod4(p))
+                    } else if p.nat.as_vec()[0] % 8 == 5 {
+                        Some(x.mod_sqrt_5mod8(p))
+                    } else {
+                        Some(x.mod_sqrt_tonelli_shanks(p))
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);

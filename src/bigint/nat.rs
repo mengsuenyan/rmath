@@ -1249,7 +1249,7 @@ impl Nat {
     }
     
     /// z = x * x
-    fn sqr_v(z: &mut Vec<u32>, x: &[u32]) {
+    pub(super) fn sqr_v(z: &mut Vec<u32>, x: &[u32]) {
         z.clear();
         if x.len() == 0 {
             return;
@@ -1622,6 +1622,24 @@ impl Nat {
             }
             
             res
+        }
+    }
+    
+    /// the `i`'th bit of the `self` is set to the 1 if `is_set` is true, otherwise 0.  
+    /// the bits len of the `self` will grow to the `i+1` if `i >= self.bits_len()`
+    pub(super) fn set_bits(&mut self, i: usize, is_set: bool) {
+        let (j, m) = (i / 32, 1 << (i % 32));
+        let n = self.as_vec().len();
+        if is_set {
+            if j >= n {
+                self.as_mut_vec().resize(j + 1, 0);
+            }
+            
+            self.as_mut_vec()[j] |= m;
+        } else {
+            if j < n {
+                self.as_mut_vec()[j] &= !m;
+            }
         }
     }
 } // Nat
