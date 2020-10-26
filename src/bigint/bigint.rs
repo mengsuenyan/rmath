@@ -370,17 +370,12 @@ impl BigInt {
     }
     
     fn mul_inner(&mut self, rhs: Self) {
-        self.sign = match (self.sign, rhs.sign) {
-            (Natural, Natural) => Natural,
-            (Negative, Negative) => Natural,
-            _ => if self.nat.partial_cmp(&0u32) == Some(Ordering::Equal) ||
-                    rhs.nat.partial_cmp(&0u32) == Some(Ordering::Equal) {
-                Natural
-            } else {
-                Negative
-            }
-        };
         self.nat *= rhs.nat;
+        if self.is_nan() || self.nat == 0u32 {
+            self.sign = Natural;
+        } else {
+            self.sign = if self.sign != rhs.sign {Negative} else {Natural};
+        }
     }
     
     fn rem_inner(&mut self, rhs: Self) {
