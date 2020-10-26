@@ -302,34 +302,26 @@ impl BigInt {
     }
     
     fn add_inner(&mut self, rhs: Self) {
-        match (self.sign, rhs.sign) {
-            (Natural, Natural) => {
-                self.nat += rhs.nat;
-                self.sign = Natural;
-            },
-            (Negative, Negative) => {
-                self.nat += rhs.nat;
-                self.sign = Negative;
-            },
-            (Natural, Negative) => {
-                self.sign = match self.nat.partial_cmp(&rhs.nat) {
-                    None => Natural,
-                    Some(Ordering::Greater) => Natural,
-                    Some(Ordering::Less) => Negative,
-                    Some(Ordering::Equal) => Natural,
-                };
-                self.nat -= rhs.nat;
-            },
-            (Negative, Natural) => {
-                self.sign = match self.nat.partial_cmp(&rhs.nat) {
-                    None => Natural,
-                    Some(Ordering::Greater) =>  Negative,
-                    Some(Ordering::Less) => Natural,
-                    Some(Ordering::Equal) =>  Natural,
-                };
-                self.nat -= rhs.nat;
+        let mut neg = self.sign;
+        
+        if self.sign == rhs.sign {
+            // x + y == x + y
+            // (-x) + (-y) == -(x + y)
+            self.nat += rhs.nat;
+        } else {
+            // x + (-y) == x - y == -(y - x)
+            // (-x) + y == y - x == -(x - y)
+            self.nat -= rhs.nat.clone();
+            if self.nat < rhs.nat {
+                neg = !neg;
             }
-        };
+        }
+        
+        if self.is_nan() || self.nat == 0u32 {
+            self.sign = Natural;
+        } else {
+            self.sign = neg;
+        }
     }
     
     fn sub_inner(&mut self, rhs: Self) {
