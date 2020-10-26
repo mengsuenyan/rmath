@@ -103,7 +103,7 @@ impl BigInt {
         }
     }
     
-    fn is_nan(&self) -> bool {
+    pub fn is_nan(&self) -> bool {
         self.nat.is_nan()
     }
     
@@ -450,6 +450,48 @@ impl BigInt {
             }
         }
     }
+
+    /// compute the product of all integers 
+    /// in the range [a, b] inclusively and returns z. 
+    /// If a > b (empty range), the result is 1.
+    pub fn mul_range(a: i64, b: i64) -> BigInt {
+        if a > b {
+            BigInt::from(1u32)
+        } else if a <= 0 && b >= 0 {
+            BigInt::from(0u32)
+        } else {
+            let (is_neg, a, b) = if a < 0 {
+                (((b - a) & 1) == 0, (-b as u64), (-a as u64))
+            } else {
+                (false, a as u64, b as u64)
+            };
+            
+            let nat = Nat::mul_range(a, b);
+            BigInt {
+                nat,
+                sign: if is_neg {Negative} else { Natural },
+            }
+        }
+    }
+    
+    /// compute the binomial coefficient of (n, k), $C_{n}^{k}$
+    pub fn binomial(n: i64, mut k: i64) -> BigInt {
+        if (n >> 1) < k && k <= n {
+            k = n - k;
+        }
+        
+        let mut a = Self::mul_range(n-k+1, n);
+        let b = Self::mul_range(1, k);
+        
+        a /= b;
+        a
+    }
+    
+    /// compute the $self^b \mod |n|$.    
+    /// $self^b$ if n == 0 and b > 0;  
+    /// $1 if n == 0 and b <= 0$;  
+    /// $nan$ if n > 0, b < 0 and x and n are not relatively prime;  
+
 }
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);

@@ -12,6 +12,7 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
     BitXor, BitXorAssign, Not, Rem, RemAssign};
 use crate::rand::IterSource;
 use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
+use crate::bigint::arith_generic::add_vv;
 
 const KARATSUBA_THRESHOLD: usize = 40;
 const BASIC_SQRT_HRESHOLD: usize = 20;
@@ -1590,6 +1591,38 @@ impl Nat {
         
         z.trim_head_zero();
         z.deep_clone()
+    }
+    
+    /// computes the product of all the unsigned integers in the
+    /// range [a, b] inclusively. If a > b (empty range), the result is 1.
+    pub(super) fn mul_range(a: u64, b: u64) -> Nat {
+        if a == 0 {
+            Nat::from(0u32)
+        } else if a > b {
+            Nat::from(1u32)
+        } else if a == b {
+            Nat::from(a)
+        } else {
+            let mut res = Nat::from(b);
+            let mut tmp_high = Nat::with_capacity(2);
+            let tmp_low = Nat::with_capacity(2);
+            for e in a..b {
+                let (high, lower) = ((e >> 32) as u32, (e & (u32::MAX) as u64) as u32);
+                Self::mul_add_ww(tmp_high.as_mut_vec(), res.as_slice(), high, 0);
+                Self::mul_add_ww(tmp_low.as_mut_vec(), res.as_slice(), lower, 0);
+                tmp_high.shl_inner(&32);
+                
+                let len = std::cmp::max(tmp_high.as_vec().len(), tmp_low.as_vec().len());
+                tmp_high.as_mut_vec().resize(len, 0);
+                tmp_low.as_mut_vec().resize(len, 0);
+                res.as_mut_vec().resize(len, 0);
+                let c = add_vv(res.as_mut_slice(), tmp_high.as_slice(), tmp_low.as_slice());
+                res.as_mut_vec().push(c);
+                res.trim_head_zero();
+            }
+            
+            res
+        }
     }
 } // Nat
 
