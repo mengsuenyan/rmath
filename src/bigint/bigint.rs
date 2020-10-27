@@ -453,6 +453,41 @@ impl BigInt {
             self.sign = if self.nat.is_nan() {Natural} else {Negative};
         }
     }
+
+    /// compute the $self &= !rhs$
+    pub fn and_not(self, rhs: BigInt) -> BigInt {
+        let mut lhs = self.deep_clone();
+        lhs.and_not_assign(rhs);
+        lhs
+    }
+    
+    /// compute the $self &= !rhs$
+    pub fn and_not_assign(&mut self, rhs: BigInt) {
+        if self.sign == rhs.sign {
+            if self.sign == Negative {
+                // (-x) &^ (-y) == ^(x-1) &^ ^(y-1) == ^(x-1) & (y-1) == (y-1) &^ (x-1)
+                self.nat -= 1u32;
+                let rhs1 = rhs.nat - 1u32;
+                self.nat.and_not_assign(rhs1);
+                self.sign = Natural;
+            } else {
+                // x &^ y == x &^ y
+                self.nat.and_not_assign(rhs.nat);
+            }
+        } else {
+            if self.sign == Negative {
+                // (-x) &^ y == ^(x-1) &^ y == ^(x-1) & ^y == ^((x-1) | y) == -(((x-1) | y) + 1)
+                self.nat -= 1u32;
+                self.nat |= rhs.nat;
+                self.nat += 1u32;
+                self.sign = if self.is_nan() {Natural} else {Negative};
+            } else {
+                // x &^ (-y) == x &^ ^(y-1) == x & (y-1)
+                let rhs1 = rhs.nat - 1u32;
+                self.nat &= rhs1;
+            }
+        }
+    }
     
     fn neg_inner(&mut self) {
         if !self.is_nan() {
