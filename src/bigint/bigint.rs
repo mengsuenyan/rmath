@@ -798,6 +798,18 @@ impl BigInt {
             _ => None,
         }
     }
+    
+    /// compute the $\lceil \sqrt{self} \rceil$, returned nan if `self < 0` or `self.is_nan() == true`
+    pub fn sqrt(&self) -> BigInt {
+        if self.is_nan() || self.sign == Negative {
+            BigInt::nan()
+        } else {
+            BigInt {
+                nat: self.nat.sqrt(),
+                sign: Natural,
+            }
+        }
+    }
 }
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);
