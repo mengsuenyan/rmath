@@ -37,3 +37,5 @@ mod arith_generic;
 mod arith_amd64;
 
 mod arith;
+
+mod float;
