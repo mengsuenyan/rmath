@@ -345,9 +345,22 @@ impl BigInt {
     }
     
     fn shr_inner(&mut self, rhs: usize) {
-        self.nat >>= rhs;
-        if self.nat == 0u32 {
-            self.sign = Natural;
+        // self.nat >>= rhs;
+        // if self.nat == 0u32 {
+        //     self.sign = Natural;
+        // }
+        if self.sign == Negative {
+            // (-x) >> s == ^(x-1) >> s == ^((x-1) >> s) == -(((x-1) >> s) + 1)
+            self.nat -= 1u32;
+            self.nat >>= rhs;
+            self.nat += 1u32;
+            self.sign = if self.is_nan() {
+                Natural
+            } else {
+                Negative
+            };
+        } else {
+            self.nat >>= rhs;
         }
     }
     
