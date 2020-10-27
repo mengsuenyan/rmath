@@ -1036,6 +1036,10 @@ impl Nat {
         return false;
     }
 
+    /// probability prime test by the MillerRabin Pseudoprimes Algorithm and the Lucas Pseudoprimes Algorithms.   
+    /// 
+    /// n means the number of test rounds, for any odd number that great than 2 and positive integer n, the probability of error 
+    /// in MillerRabinPrimeTest is at most $2^{-n}$.
     pub fn probably_prime_test<Rng: IterSource<u32>>(&self, n: usize, rng: &mut Rng) -> bool {
         if self.is_nan() || (self == &0u32) {
             return false;

@@ -618,6 +618,22 @@ impl BigInt {
             }
         }
     }
+
+    /// check the bit is whether set to 1 in the `bit_idx`, 
+    /// `None` if `bit_idx >= self.bits_len()`.
+    pub fn is_set_bit(&self, i: usize) -> Option<bool> {
+        if self.sign == Negative {
+            let t = self.nat.clone() - 1u32;
+            t.is_set_bit(i).map(|b| {!b})
+        } else {
+            self.nat.is_set_bit(i)
+        }
+    }
+    
+    /// compute the length of the absolute value of x in bits
+    pub fn bits_len(&self) -> usize {
+        self.nat.bits_len()
+    }
     
     /// generate a random number that belong to the range [0, self),  returned nan if the self <= 0
     pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> BigInt{
