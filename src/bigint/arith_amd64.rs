@@ -163,11 +163,12 @@ pub(super) fn shl_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
 
     let s = s & 31;
     let ss = (32 - s) & 31;
+    let c = x.last().unwrap() >> s;
     x.iter().rev().skip(1).zip(x.iter().rev().zip(z.iter_mut().rev())).for_each(|(&xt0, (&xt1, zt))| {
         *zt = (xt1 << s) | (xt0 >> ss);
     });
     z[0] = x[0] << s;
-    x.last().unwrap() >> s
+    c
 }
 
 pub(super) unsafe fn shl_vu_inner(z: *mut u32, x: *const u32, s: usize, n: usize) -> u32 {
@@ -178,11 +179,12 @@ pub(super) unsafe fn shl_vu_inner(z: *mut u32, x: *const u32, s: usize, n: usize
 
     let s = s & 31;
     let ss = (32-s) & 31;
+    let c= x.add(n-1).read() >> ss;
     for i in (1..n).rev() {
         z.add(i).write((x.add(i).read() << s) | (x.add(i-1).read() >> ss));
     }
     z.write(x.read() << s);
-    x.add(n-1).read() >> ss
+    c
 }
 
 pub(super) fn shr_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
@@ -192,12 +194,12 @@ pub(super) fn shr_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
     }
     let s = s & 31;
     let ss = (32 - s) & 31;
-
+    let c = x[0] << ss;
     x.iter().skip(1).zip(x.iter().zip(z.iter_mut())).for_each(|(&xt1, (&xt0, zt))| {
         *zt = (xt0 >> s) | (xt1 << ss);
     });
     *z.last_mut().unwrap() = x.last().unwrap() >> s;
-    x[0] << ss
+    c
 }
 
 pub(super) fn mul_add_vww(z: &mut [u32], x: &[u32], y: u32, r: u32) -> u32 {
