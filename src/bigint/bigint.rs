@@ -450,15 +450,35 @@ impl BigInt {
     }
     
     fn bitxor_inner(&mut self, rhs: Self) {
-        self.nat ^= rhs.nat;
-        self.sign = match self.nat.partial_cmp(&0u32) {
-            None => Natural,
-            Some(Ordering::Equal) => Natural,
-            _ => match (self.sign, rhs.sign) {
-                (Natural, Natural) => Natural,
-                (Negative, Negative) => Natural,
-                _ => Negative,
+        if self.sign == rhs.sign {
+            if self.sign == Negative {
+                // (-x) ^ (-y) == ^(x-1) ^ ^(y-1) == (x-1) ^ (y-1)
+                self.nat -= 1u32;
+                let rhs1 = rhs.nat - 1u32;
+                self.nat ^= rhs1;
+                self.sign = Natural;
+            } else {
+                // x ^ y == x ^ y
+                self.nat ^= rhs.nat;
+                self.sign = Natural;
             }
+        } else {
+            let rhs1 = if self.sign == Negative {
+                let rhs1 = self.nat.clone() - 1u32;
+                self.nat.clear();
+                self.nat.as_mut_vec().extend(rhs.nat.iter());
+                rhs1
+            } else {
+                rhs.nat - 1u32
+            };
+            
+            self.nat ^= rhs1;
+            self.nat += 1u32;
+            self.sign = if self.nat.is_nan() {
+                Natural
+            } else {
+                Negative
+            };
         }
     }
 
@@ -810,15 +830,20 @@ impl Not for BigInt {
     type Output = Self;
 
     fn not(self) -> Self::Output {
-        let nat = !self.nat;
-        let sign = match nat.partial_cmp(&0u32) {
-            None => Natural,
-            Some(Ordering::Equal) => Natural,
-            _ => match self.sign {Natural => Negative, Negative => Natural,},
-        };
-        Self {
-            nat,
-            sign,
+        if self.is_nan() {
+            BigInt::nan()
+        } else if self.sign == Negative {
+            // ^(-x) == ^(^(x-1)) == x-1
+            BigInt {
+                nat: self.nat - 1u32,
+                sign: Natural,
+            }
+        } else {
+            // ^x == -x-1 == -(x+1)
+            BigInt {
+                nat: self.nat + 1u32,
+                sign: Negative,
+            }
         }
     }
 }

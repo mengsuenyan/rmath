@@ -85,7 +85,7 @@ fn bigint_logical_arith() {
     assert_eq!(l1.clone() & l2.clone(), l1);
     assert_eq!(l1.clone() | l2.clone(), l2);
     assert_eq!(l1.clone() ^ l2.clone(), BigInt::from(0));
-    assert_eq!(!l1.clone(), BigInt::from(0));
+    assert_eq!(!l1.clone(), BigInt::from_str("-0x100000000000000000000000000000000").unwrap());
     assert_eq!(
         format!("{}", l1.clone() & BigInt::nan()),
         format!("{}", BigInt::nan())
@@ -97,8 +97,8 @@ fn bigint_logical_arith() {
     assert_eq!(l1.clone() ^ l2.clone(), BigInt::from_str("0xfffffff006fffffffffffffffffffffcddd1000000000102b271247b7058309328534053fb6cfa7cfba6cfa7c6fa7b").unwrap());
     assert_eq!(l1.clone() | l2.clone(), BigInt::from_str("0xfffffffffffffffffffffffffffffffffff3222222222322b273267b7958309328534053ffffffffffffffffffffff").unwrap());
     assert_eq!(l1.clone() & l2.clone(), BigInt::from_str("0xff9000000000000000000000322222222222222200002020009000000000000000493058304593058390584").unwrap());
-    assert_eq!(!l2.clone(), BigInt::from_str("-0x6fffffffffffffffffffffcdddddddddddddcdf6facf9a7c6a7cf6cd7acbfacfb6cfa7cfba6cfa7c6fa7b").unwrap());
-    assert_eq!(!BigInt::from_str("0b11000011").unwrap(), BigInt::from_str("-0b111100").unwrap());
+    assert_eq!(!l2.clone(), BigInt::from_str("-0xff9000000000000000000000322222222222223209053065839583093285340530493058304593058390585").unwrap());
+    assert_eq!(!BigInt::from_str("0b11000011").unwrap(), BigInt::from_str("-0b11000100").unwrap());
 }
 
 #[test]
