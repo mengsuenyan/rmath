@@ -114,6 +114,10 @@ impl BigInt {
         b
     }
     
+    pub(super) fn get_nat(&self) -> &Nat {
+        &self.nat
+    }
+    
     fn abs_inner(&mut self) {
         self.sign = Natural;
     }
@@ -849,7 +853,16 @@ impl BigInt {
 
 bigint_from_basic!(u8, u16, u32, usize, u64, u128);
 bigint_from_basici!((i8, u8), (i16, u16), (i32, u32), (isize, usize), (i64, u64), (i128, u128));
-bigint_from_vec!(Vec<u8>, &Vec<u8>, &[u8], Vec<u32>, &Vec<u32>, &[u32], Nat);
+bigint_from_vec!(Vec<u8>, &Vec<u8>, &[u8], Vec<u32>, &Vec<u32>, &[u32]);
+
+impl From<Nat> for BigInt {
+    fn from(nat: Nat) -> Self {
+        BigInt {
+            nat: nat.deep_clone(),
+            sign: Natural,
+        }
+    }
+}
 
 impl FromStr for BigInt {
     type Err = NatError;

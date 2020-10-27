@@ -13,6 +13,7 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
 use crate::rand::IterSource;
 use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
 use crate::bigint::arith_generic::add_vv;
+use crate::bigint::BigInt;
 
 const KARATSUBA_THRESHOLD: usize = 40;
 const BASIC_SQRT_HRESHOLD: usize = 20;
@@ -870,6 +871,14 @@ impl Nat {
     /// Springer, 2005.
     /// note: Miller-Rabin算法目前可以通过所有测试示例, 故lucas算法暂不实现
     fn prime_validate_by_lucas(&self) -> bool {
+        if self.is_nan() || self == &1u32 {
+            return false;
+        }
+        
+        if (self.as_vec()[0] & 1) == 0 {
+            return self == &2u32;
+        }
+        
         // Baillie-OEIS "method C" for choosing D, P, Q,
         // as in https://oeis.org/A217719/a217719.txt:
         // try increasing P ≥ 3 such that D = P² - 4 (so Q = 1)
@@ -877,7 +886,154 @@ impl Nat {
         // The search is expected to succeed for non-square n after just a few trials.
         // After more than expected failures, check whether n is square
         // (which would cause Jacobi(D, n) = 1 for all D not dividing n).
-        true
+        let mut p = 3;
+        let mut t1 = Nat::nan();
+        let (int_d, int_n) = (BigInt::from(1u32), BigInt::from(self.clone()));
+        while p <= 10000 {
+            int_d.get_nat().as_mut_vec()[0] = (p * p) - 4;
+            let j = if let Some(x) = int_d.jacobi(&int_n) {x} else {return false};
+            if j == -1 {
+                break;
+            }
+            
+            if j == 0 {
+                // d = p²-4 = (p-2)(p+2).
+                // If (d/n) == 0 then d shares a prime factor with n.
+                // Since the loop proceeds in increasing p and starts with p-2==1,
+                // the shared prime factor must be p+2.
+                // If p+2 == n, then n is prime; otherwise p+2 is a proper factor of n.
+                return self.as_vec().len() == 1 && self.as_vec()[0] == (p + 2);
+            }
+            
+            if p == 40 {
+                // We'll never find (d/n) = -1 if n is a square.
+                // If n is a non-square we expect to find a d in just a few attempts on average.
+                // After 40 attempts, take a moment to check if n is indeed a square.
+                t1 = self.sqrt();
+                t1 = t1.sqr();
+                if &t1 == self {
+                    return false;
+                }
+            }
+            
+            p += 1;
+        }
+        
+        // Grantham definition of "extra strong Lucas pseudoprime", after Thm 2.3 on p. 876
+        // (D, P, Q above have become Δ, b, 1):
+        //
+        // Let U_n = U_n(b, 1), V_n = V_n(b, 1), and Δ = b²-4.
+        // An extra strong Lucas pseudoprime to base b is a composite n = 2^r s + Jacobi(Δ, n),
+        // where s is odd and gcd(n, 2*Δ) = 1, such that either (i) U_s ≡ 0 mod n and V_s ≡ ±2 mod n,
+        // or (ii) V_{2^t s} ≡ 0 mod n for some 0 ≤ t < r-1.
+        //
+        // We know gcd(n, Δ) = 1 or else we'd have found Jacobi(d, n) == 0 above.
+        // We know gcd(n, 2) = 1 because n is odd.
+        //
+        // Arrange s = (n - Jacobi(Δ, n)) / 2^r = (n+1) / 2^r.
+        let mut s = self.clone() + 1u32;
+        let r = s.trailling_zeros();
+        s.shr_inner(&r);
+        let nm2 = self.clone() - 2u32;
+
+        // We apply the "almost extra strong" test, which checks the above conditions
+        // except for U_s ≡ 0 mod n, which allows us to avoid computing any U_k values.
+        // Jacobsen points out that maybe we should just do the full extra strong test:
+        // "It is also possible to recover U_n using Crandall and Pomerance equation 3.13:
+        // U_n = D^-1 (2V_{n+1} - PV_n) allowing us to run the full extra-strong test
+        // at the cost of a single modular inversion. This computation is easy and fast in GMP,
+        // so we can get the full extra-strong test at essentially the same performance as the
+        // almost extra strong test."
+
+        // Compute Lucas sequence V_s(b, 1), where:
+        //
+        //	V(0) = 2
+        //	V(1) = P
+        //	V(k) = P V(k-1) - Q V(k-2).
+        //
+        // (Remember that due to method C above, P = b, Q = 1.)
+        //
+        // In general V(k) = α^k + β^k, where α and β are roots of x² - Px + Q.
+        // Crandall and Pomerance (p.147) observe that for 0 ≤ j ≤ k,
+        //
+        //	V(j+k) = V(j)V(k) - V(k-j).
+        //
+        // So in particular, to quickly double the subscript:
+        //
+        //	V(2k) = V(k)² - 2
+        //	V(2k+1) = V(k) V(k+1) - P
+        //
+        // We can therefore start with k=0 and build up to k=s in log₂(s) steps.
+        let nat_p = Nat::from(p);
+        let mut vk = Nat::from(2u32);
+        let mut vk1 = Nat::from(p);
+        for i in (0..=s.bits_len()).rev() {
+            Self::mul_by_karatsuba(t1.as_mut_vec(), vk.as_slice(), vk1.as_slice());
+            t1.add_inner(self);
+            t1.sub_inner(&nat_p);
+            
+            match s.is_set_bit(i) {
+                Some(true) => {
+                    // k' = 2k+1
+                    // V(k') = V(2k+1) = V(k) V(k+1) - P.
+                    // Self::mul_by_karatsuba(t1.as_mut_vec(), vk.as_slice(), vk1.as_slice());
+                    // t1.add_inner(self);
+                    // t1.sub_inner(&nat_p);
+                    vk = t1.clone() % self.clone();
+                    // V(k'+1) = V(2k+2) = V(k+1)² - 2.
+                    Self::sqr_v(t1.as_mut_vec(), vk1.as_slice());
+                    t1.add_inner(&nm2);
+                    vk1 = t1.clone() % self.clone();
+                },
+                _ => {
+                    // k' = 2k
+                    // V(k'+1) = V(2k+1) = V(k) V(k+1) - P.
+                    // Self::mul_by_karatsuba(t1.as_mut_vec(), vk.as_slice(), vk1.as_slice());
+                    // t1.add_inner(self);
+                    // t1.sub_inner(&nat_p);
+                    vk1 = t1.clone() % self.clone();
+                    // V(k') = V(2k) = V(k)² - 2
+                    Self::sqr_v(t1.as_mut_vec(), vk.as_slice());
+                    t1.add_inner(&nm2);
+                    vk = t1.clone() % self.clone();
+                }
+            }
+        }
+
+        // Now k=s, so vk = V(s). Check V(s) ≡ ±2 (mod n).
+        if vk == 2u32 || vk == nm2 {
+            // Check U(s) ≡ 0.
+            // As suggested by Jacobsen, apply Crandall and Pomerance equation 3.13:
+            //
+            //	U(k) = D⁻¹ (2 V(k+1) - P V(k))
+            //
+            // Since we are checking for U(k) == 0 it suffices to check 2 V(k+1) == P V(k) mod n,
+            // or P V(k) - 2 V(k+1) == 0 mod n.
+            Self::mul_by_karatsuba(t1.as_mut_vec(), vk.as_slice(), nat_p.as_slice());
+            t1 -= vk1 << 1;
+            vk1 = t1.clone() % self.clone();
+            if vk1 == 0u32 {
+                return true;
+            }
+        }
+
+        // Check V(2^t s) ≡ 0 mod n for some 0 ≤ t < r-1.
+        for _ in 0..r.saturating_sub(1) {
+            if vk == 0u32 {
+                return true;
+            }
+            // Optimization: V(k) = 2 is a fixed point for V(k') = V(k)² - 2,
+            // so if V(k) = 2, we can stop: we will never find a future V(k) == 0.
+            if vk.as_vec().len() == 1 && vk.as_vec()[0] == 2 {
+                return false;
+            }
+            // k' = 2k
+            // V(k') = V(2k) = V(k)² - 2
+            Self::sqr_v(t1.as_mut_vec(), vk.as_slice());
+            t1 -= 2u32;
+            vk = t1.clone() % self.clone();
+        }
+        return false;
     }
 
     pub fn probably_prime_test<Rng: IterSource<u32>>(&self, n: usize, rng: &mut Rng) -> bool {
@@ -915,7 +1071,7 @@ impl Nat {
     
     /// return $\lfloor \sqrt{self} \rfloor$ by the Newton's method  
     pub fn sqrt(&self) -> Nat {
-        if self <= &1u32 {
+        if self.is_nan() || self <= &1u32 {
             return self.deep_clone();
         }
         
@@ -1191,19 +1347,23 @@ impl Nat {
     }
     
     unsafe fn basic_sqr(z: *mut u32, x: *const u32, xlen: usize, zlen: usize) {
-        let mut t = Vec::with_capacity(xlen);
+        let mut t = Vec::with_capacity(xlen << 1);
         t.resize(xlen << 1, 0);
         let (z1, z0) = mul_ww(x.read(), x.read());
-        z.add(1).write(z1);
         z.write(z0);
+        z.add(1).write(z1);
         
+        let t_ptr = t.as_mut_ptr();
         for i in 1..xlen {
             let d = x.add(i).read();
             let (z1, z0) = mul_ww(d, d);
-            z.add((i<<1) + 1).write(z1);
-            z.add(i<<1).write(z0);
+            // z collects the squares x[i] * x[i]
+            let idx = i << 1;
+            z.add(idx).write(z0);
+            z.add(idx + 1).write(z1);
+            // t collects the products x[i] * x[j] where j < i
             let z0 = add_mul_vvw_inner(t.as_mut_ptr().add(i), x, d, i);
-            t[i << 1] = z0;
+            t_ptr.add(idx).write(z0);
         }
         
         let tmp = (xlen << 1) - 1;
