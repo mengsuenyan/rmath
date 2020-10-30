@@ -38,4 +38,17 @@ mod arith_amd64;
 
 mod arith;
 
-mod float;
+mod util;
+
+#[macro_use]
+mod float_macro;
+
+mod float_para;
+
+pub mod float;
+pub use float::Float;
+
+mod rat;
+mod rat_err;
+pub use rat_err::{RatError, RatErrKind};
+pub use rat::Rat;

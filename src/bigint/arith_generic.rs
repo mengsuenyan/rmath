@@ -182,6 +182,23 @@ pub(super) fn shr_vu(z: &mut [u32], x: &[u32], s: usize) -> u32 {
     c
 }
 
+pub(super) unsafe fn shr_vu_inner(z: *mut u32, x: *const u32, s: usize, n: usize) -> u32 {
+    if s == 0 || n == 0 {
+        std::ptr::copy(x, z, n);
+        return 0;
+    }
+    
+    let s = s & 31;
+    let ss = (32 - s) & 31;
+    let c = x.read() << ss;
+    for i in 0..(n-1) {
+        let tmp = (x.add(i).read() >> s) | (x.add(i+1).read() << ss);
+        z.add(i).write(tmp);
+    }
+    z.add(n-1).write(x.add(n-1).read() >> s);
+    c
+}
+
 pub(super) fn mul_add_vww(z: &mut [u32], x: &[u32], y: u32, r: u32) -> u32 {
     z.iter_mut().zip(x.iter()).fold(r, |c, (zt, &xt)| {
         let (cc, tt) = mul_add_www(xt, y, c);

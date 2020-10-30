@@ -27,6 +27,12 @@ impl Not for BISign {
     }
 }
 
+impl From<bool> for BISign {
+    fn from(is_neg: bool) -> Self {
+        if is_neg {Negative} else {Natural}
+    }
+}
+
 impl PartialOrd for BISign {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
@@ -68,8 +74,8 @@ impl Ord for BISign {
 /// The panic will occurred when the divisor or modulus is 0 in the `/` or `%` operation;
 #[derive(Clone)]
 pub struct BigInt {
-    nat: Nat,
-    sign: BISign,
+    pub(super) nat: Nat,
+    pub(super) sign: BISign,
 }
 
 impl BigInt {
@@ -95,6 +101,25 @@ impl BigInt {
     pub fn set_natural(&mut self) {
         if !self.is_nan() {
             self.sign = Natural; 
+        }
+    }
+    
+    /// Sign returns:
+    ///
+    ///	Some(-1) if self <  0  
+    ///	 Some(0) if self == 0  
+    ///	Some(+1) if self >  0  
+    /// None if self is nan
+    ///
+    pub fn signnum(&self) -> Option<isize> {
+        if self.is_nan() {
+            None
+        } else if self.sign == Negative {
+            Some(-1)
+        } else if self.nat == 0u32 {
+            Some(0)
+        } else {
+            Some(1)
         }
     }
     
@@ -163,7 +188,7 @@ impl BigInt {
         }
     }
     
-    fn nan() -> BigInt {
+    pub(super) fn nan() -> BigInt {
         Self {
             nat: Nat::nan(),
             sign: Natural,
@@ -889,12 +914,17 @@ impl FromStr for BigInt {
         if s.is_empty() {
             Err(NatError::new(BeginWithIllegalChar, "empty string"))
         } else {
-            let sign = if s.chars().next() == Some('-') {
+            let mut sign = if s.chars().next() == Some('-') {
                 BISign::Negative
             } else {
                 BISign::Natural
             };
             let nat = Nat::from_str(if sign == Negative {&s[1..]} else {s})?;
+            
+            if nat == 0u32 {
+                sign = BISign::Natural;
+            }
+            
             Ok(
                 Self {
                     nat,

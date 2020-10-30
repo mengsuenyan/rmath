@@ -11,8 +11,7 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
     Div, DivAssign, Mul, MulAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign,
     BitXor, BitXorAssign, Not, Rem, RemAssign};
 use crate::rand::IterSource;
-use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww};
-use crate::bigint::arith_generic::add_vv;
+use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww, add_vv};
 use crate::bigint::BigInt;
 
 const KARATSUBA_THRESHOLD: usize = 40;
@@ -1818,6 +1817,33 @@ impl Nat {
         } else {
             if j < n {
                 self.as_mut_vec()[j] &= !m;
+            }
+        }
+    }
+
+    /// sticky returns 1 if there's a 1 bit within the
+    /// i least significant bits, otherwise it returns 0.
+    pub(super) fn sitcky(&self, bits_num: usize) -> usize {
+        if self.is_nan() {return 0;}
+        let j = bits_num >> 5;
+        if j >= self.as_vec().len() {
+            if self == &0u32 {
+                0
+            } else {
+                1
+            }
+        } else {
+            for &x in self.iter().take(j) {
+                if x != 0 {
+                    return 1;
+                }
+            }
+            
+            let rom = bits_num & 31;
+            if rom > 0 && (self.as_vec()[j] << (32 - rom)) != 0 {
+                1
+            } else {
+                0
             }
         }
     }
