@@ -12,5 +12,7 @@ A rust math library.
   - [x] MersenneTwisterRand, mt19937, mt19937_64;
   
 - bigint
-  - [x] Nat 
-  - [x] BigInt
+  - [x] Nat: natural numbers;
+  - [x] BigInt: multi-precision integers;
+  - [x] Rat: multi-precision fractional number;
+  - [x] Float: multi-precision floating point number;
