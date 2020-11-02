@@ -4,6 +4,11 @@
 //! 
 //! 数论相关: https://www.cnblogs.com/mengsuenyan/p/12969712.html
 //! 
+//! 
+//! # Note
+//! 
+//! **The implementation of the `Clone` trait just only provide a shadow clone of the data that purpose is to share the ownership of the data, and the `deep_clone` method provide a real clone of the data.**
+//! 
 
 #[macro_use]
 mod nat_macro;
@@ -44,7 +49,9 @@ mod util;
 mod float_macro;
 
 mod float_para;
-
+mod decimal;
+mod float_err;
+mod float_fmt;
 pub mod float;
 pub use float::Float;
 

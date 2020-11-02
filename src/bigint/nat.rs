@@ -1823,7 +1823,7 @@ impl Nat {
 
     /// sticky returns 1 if there's a 1 bit within the
     /// i least significant bits, otherwise it returns 0.
-    pub(super) fn sitcky(&self, bits_num: usize) -> usize {
+    pub(super) fn sticky(&self, bits_num: usize) -> usize {
         if self.is_nan() {return 0;}
         let j = bits_num >> 5;
         if j >= self.as_vec().len() {
