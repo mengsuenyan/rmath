@@ -660,14 +660,15 @@ impl BigInt {
         self.nat.bits_len()
     }
     
-    /// generate a random number that belong to the range [0, self),  returned nan if the self <= 0
+    /// generate a random number that belong to the range [0, self) when `self > 0`, or [self,0] when `self < 0`,  returned nan if the self == 0
     pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> BigInt{
         if self.is_nan() || self == &0u32 {
             BigInt::nan()
         } else {
+            let r = self.nat.random(rng);
             BigInt {
-                nat: self.nat.random(rng),
-                sign: Natural,
+                sign: if r == 0u32 {Natural} else {self.sign},
+                nat: r,
             }
         }
     }
