@@ -147,6 +147,16 @@ impl BigInt {
         self.sign = Natural;
     }
 
+    /// little endian byte representation for the absolute value of `self`
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        self.nat.to_le_bytes()
+    }
+
+    /// big endian byte representation for the absolute value of `self`
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        self.nat.to_be_bytes()
+    }
+
     /// 除法定理: 对于任何整数a和任何正整数n, , 存在唯一整数q和r, 满足0<= r < n, 且self=d*n+r  
     /// 对于任何整数a和任何非零整数n, , 存在唯一整数q和r, 满足0<= r < abs(n), 且self=d*n+r  
     pub fn rem_euclid(&self, n: BigInt) -> BigInt {
