@@ -10,6 +10,15 @@ pub struct Iter<'a, T, P>
 
 impl<'a, T, P> Iter<'a, T, P> 
     where P: PrimitiveType, T: 'a + Source<P> {
+    
+    pub fn new(rd_src: &'a mut T) -> Iter<'a, T, P> {
+        Self {
+            inner: rd_src,
+            last_err: None,
+            ph: PhantomData
+        }
+    }
+
     pub fn last_error(&self) -> Option<&RandError> {
         self.last_err.as_ref()
     }
