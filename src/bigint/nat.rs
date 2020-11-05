@@ -185,6 +185,10 @@ impl Nat {
         itr.for_each(|&x| {v.extend_from_slice(x.to_be_bytes().as_ref());});
         v
     }
+
+    pub fn bytes_len(&self) -> usize {
+        self.as_vec().len()
+    }
     
     pub fn bits_len(&self) -> usize {
         match self.as_vec().last() {

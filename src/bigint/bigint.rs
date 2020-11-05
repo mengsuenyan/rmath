@@ -688,6 +688,10 @@ impl BigInt {
             self.nat.is_set_bit(i)
         }
     }
+
+    pub fn bytes_len(&self) -> usize {
+        self.nat.bytes_len()
+    }
     
     /// compute the length of the absolute value of x in bits
     pub fn bits_len(&self) -> usize {
