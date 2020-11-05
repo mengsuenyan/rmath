@@ -154,6 +154,10 @@ impl BigInt {
         b.rem_euclid_inner(n);
         b
     }
+
+    pub fn rem_euclid_assign(&mut self, n: BigInt) {
+        self.rem_euclid_inner(n);
+    }
     
     fn rem_euclid_inner(&mut self, n: BigInt) {
         self.rem_inner(n.clone());
@@ -172,6 +176,10 @@ impl BigInt {
         let mut b = self.deep_clone();
         b.div_euclid_inner(n);
         b
+    }
+
+    pub fn div_euclid_assign(&mut self, n: BigInt) {
+        self.div_euclid_inner(n);
     }
     
     fn div_euclid_inner(&mut self, n: BigInt) {
