@@ -82,8 +82,19 @@ fn nat_from_and_fmt() {
             y.pop();
         }
         if y.is_empty() && !x.is_empty() {y.push(0);}
-        let nat_y = Nat::from(y);
+        let nat_y = Nat::from(y.as_slice());
         assert_eq!(format!("{:x}", nat_y), s, "Nat::from({:?})", s);
+
+        let nat_y_le = Nat::from_le_bytes(y.as_slice());
+        if !nat_y.is_nan() && !nat_y_le.is_nan() {
+            assert_eq!(nat_y, nat_y_le, "Nat::from == Nat::from_le_bytes, case: {:?}", x);
+        }
+
+        y.reverse();
+        let nat_y_be = Nat::from_be_bytes(y.as_slice());
+        if !nat_y.is_nan() && !nat_y_le.is_nan() {
+            assert_eq!(nat_y, nat_y_be, "Nat::from == Nat::from_le_bytes, case: {:?}", x);
+        }
         
         let hs = format!("0x{}", s);
         if x.is_empty() {

@@ -157,6 +157,22 @@ impl BigInt {
         self.nat.to_be_bytes()
     }
 
+    /// This method is samle as the `From<&[u8]>`
+    pub fn from_le_bytes(data: &[u8]) -> BigInt {
+        BigInt {
+            nat: Nat::from_le_bytes(data),
+            sign: Natural,
+        }
+    }
+
+    /// big endian
+    pub fn from_be_bytes(data: &[u8]) -> BigInt {
+        BigInt {
+            nat: Nat::from_be_bytes(data),
+            sign: Natural,
+        }
+    }
+
     /// 除法定理: 对于任何整数a和任何正整数n, , 存在唯一整数q和r, 满足0<= r < n, 且self=d*n+r  
     /// 对于任何整数a和任何非零整数n, , 存在唯一整数q和r, 满足0<= r < abs(n), 且self=d*n+r  
     pub fn rem_euclid(&self, n: BigInt) -> BigInt {

@@ -101,6 +101,50 @@ impl Nat {
     pub(super) fn num(&self) -> usize {
         self.as_vec().len()
     }
+
+    fn from_le_or_be_bytes<'a>(data: impl DoubleEndedIterator<Item=&'a u8> + ExactSizeIterator<Item=&'a u8>) -> Nat {
+        let (mut val, mut nat) = (0u32, Vec::with_capacity(data.len()));
+
+        for (i, &e) in data.enumerate() {
+            let j = i & 3;
+            val |= (e as u32) << (j << 3);
+
+            if j == 3 {
+                nat.push(val);
+                val = 0;
+            }
+        }
+
+        if val > 0 {
+            nat.push(val);
+        } else if nat.is_empty() {
+            nat.push(0);
+        }
+
+        Self::trim_head_zero_(&mut nat);
+
+        Self {
+            nat: Rc::new(Cell::new(nat)),
+        }
+    }
+
+    /// This method is the same as `From<&[u8]>`
+    pub fn from_le_bytes(data: &[u8]) -> Nat {
+        if data.is_empty() {
+            Self::nan()
+        } else {
+            Self::from_le_or_be_bytes(data.iter())
+        }
+    }
+
+    /// big endian
+    pub fn from_be_bytes(data: &[u8]) -> Nat {
+        if data.is_empty() {
+            Self::nan()
+        } else {
+            Self::from_le_or_be_bytes(data.iter().rev())
+        }
+    }
     
     /// little endian
     pub fn to_le_bytes(&self) -> Vec<u8> {
