@@ -1061,5 +1061,11 @@ bigint_fmt_impl!(
     (Binary, "{:#b}", "{:#b}")
 );
 
+impl AsRef<Nat> for BigInt {
+    fn as_ref(&self) -> &Nat {
+        &self.nat
+    }
+}
+
 #[cfg(test)]
 mod tests;
