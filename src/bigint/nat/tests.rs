@@ -677,3 +677,18 @@ fn nat_mul_range() {
         assert_eq!(res, Nat::mul_range(ele.0[0], ele.0[1]), "case: {:?}", ele.0);
     });
 }
+
+#[test]
+fn nat_generate_small_prime() {
+    let s = DefaultSeed::<u32>::new().unwrap();
+    let mut rng = CryptoRand::new(&s).unwrap();
+
+    let test_round_num = 20;
+    for n in 2..10 {
+        let p = Nat::generate_prime(n, test_round_num, &mut rng).unwrap();
+        
+        assert_eq!(p.bits_len(), n);
+        println!("===>{}", p);
+        assert!(p.probably_prime_test(32, &mut rng));
+    }
+}

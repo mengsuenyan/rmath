@@ -4,6 +4,7 @@ use std::fmt::{Debug, Formatter, Result};
 pub enum ParseErrKind {
     BeginWithIllegalChar,
     IllegalCharEncounter,
+    InvalidParameters,
 }
 
 impl Debug for ParseErrKind {
@@ -14,6 +15,9 @@ impl Debug for ParseErrKind {
             },
             ParseErrKind::IllegalCharEncounter => {
                 write!(f, "{}", "Illegal character encountered during parsing")
+            },
+            ParseErrKind::InvalidParameters => {
+                write!(f, "{}", "Invalid parameters")
             }
         }
     }

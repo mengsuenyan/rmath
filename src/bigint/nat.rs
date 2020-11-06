@@ -13,6 +13,7 @@ use std::ops::{Add, AddAssign, SubAssign, Sub, ShrAssign, Shr, Shl, ShlAssign,
 use crate::rand::IterSource;
 use crate::bigint::arith::{add_mul_vvw, sub_vv_inner, add_vv_inner, add_vw_inner, sub_vw_inner, add_mul_vvw_inner, mul_ww, shl_vu_inner, mul_add_vww, add_vv};
 use crate::bigint::BigInt;
+use crate::parse_err::ParseErrKind;
 
 const KARATSUBA_THRESHOLD: usize = 40;
 const BASIC_SQRT_HRESHOLD: usize = 20;
@@ -672,7 +673,7 @@ impl Nat {
         
         if self.num() <= 1 {
             match self.as_mut_vec().last_mut() {
-                Some(x) => *x = *x % *rhs,
+                Some(x) => *x %= *rhs,
                 None => {},
             };
             return;
@@ -815,23 +816,16 @@ impl Nat {
         }
     }
     
-    /// generate a random number that belong to the range of [0, self)
-    pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> Nat {
-        if self.is_nan() || self == &0u32 {
-            return Nat::nan();
-        }
-        
+    fn random_inner<Rng: IterSource<u32>>(&self, n: &mut Nat, rng: &mut Rng) {
         let bits_len = self.bits_len();
         let (num, rem) = (self.num(), bits_len & 31);
         let mask = if rem == 0 {u32::MAX} else {(1u32 << rem) - 1};
-        
-        let nat = Nat::with_capacity(num);
-        
+
         let mut itr = rng.iter_mut();
         loop {
-            let v = nat.as_mut_vec();
+            let v = n.as_mut_vec();
             v.clear();
-            
+
             while v.len() < num {
                 match itr.next() {
                     Some(x) => v.push(x),
@@ -839,17 +833,26 @@ impl Nat {
                     // None => panic!("{}", itr.last_error().unwrap()),
                 }
             }
-            
+
             match v.last_mut() {
                 Some(x) => *x &= mask,
                 None => {},
             }
-            
-            if &nat < self {
+
+            if &*n< self {
                 break;
             }
         }
+    }
 
+    /// generate a random number that belong to the range of [0, self)
+    pub fn random<Rng: IterSource<u32>>(&self, rng: &mut Rng) -> Nat {
+        if self.is_nan() || self == &0u32 {
+            return Nat::nan();
+        }
+        
+        let mut nat = Nat::with_capacity(self.num());
+        self.random_inner(&mut nat, rng);
         nat
     }
 
@@ -868,28 +871,21 @@ impl Nat {
     }
 
     /// 判断n是否是合数  
-    fn miller_rabin_witness(&mut self, n: &Self) -> bool {
-        let n_m1 = n.clone() - 1u32;
-        let t = n_m1.trailling_zeros();
-        let u = n_m1.clone() >> t;
-
-        // let xi_m1 = self.pow_mod(u.clone(), n.clone());
-        self.pow_mod_inner(u, n.clone());
-        let xi_m1 = self;
-        let mut xi = Nat::with_capacity(xi_m1.num());
+    fn miller_rabin_witness(&mut self, n: &Nat, t: usize, n_m1: &Nat, buf: &mut Nat) -> bool {
+        // self.pow_mod_inner(u.clone(), n.clone());
+        let (mut xi, mut xi_m1) = (buf, self);
         for _ in 1..=t {
-            xi.as_mut_vec().clear();
-            xi.as_mut_vec().extend_from_slice(xi_m1.as_slice());
-            xi.mul_inner(&xi_m1);
+            Self::sqr_v(xi.as_mut_vec(), xi_m1.as_slice());
             xi.rem_inner(n);
-
-            if xi == 1u32 && *xi_m1 != 1u32 && *xi_m1 != n_m1 {
+            
+            if *xi == 1u32 && *xi_m1 != 1u32 && (&*xi_m1) != n_m1 {
                 return true;
             }
-            xi_m1.as_mut_vec().clear();
-            xi_m1.as_mut_vec().extend_from_slice(xi.as_slice());
+            let tmp = xi;
+            xi = xi_m1;
+            xi_m1 = tmp;
         }
-
+        
         *xi_m1 != 1u32
     }
 
@@ -898,9 +894,16 @@ impl Nat {
     /// 
     /// note: 内部调用函数, self是大于2的奇数, s>0  
     fn prime_validate_by_miller_rabin<Rng: IterSource<u32>>(&self, s: usize, rng: &mut Rng) -> bool {
+        let mut a = Nat::with_capacity(self.num());
+        let n_m1 = self.clone() - 1u32;
+        let t = n_m1.trailling_zeros();
+        let u = n_m1.clone() >> t;
+        let mut buf = Nat::with_capacity(self.num());
+        
         for _ in 0..s {
-            let mut a = self.random(rng);
-            if a.miller_rabin_witness(self) {
+            self.random_inner(&mut a, rng);
+            let mut tmp = a.exp(&u, self);
+            if tmp.miller_rabin_witness(self, t, &n_m1, &mut buf) {
                 return false;
             }
         }
@@ -1098,6 +1101,15 @@ impl Nat {
         }
         return false;
     }
+    
+    fn rem_inner_u32(&self, rhs: u32) -> u32 {
+        let (mut r, rhs) = (0, rhs as u64);
+        for &ele in self.iter().rev() {
+            let m = (r << 32) | (ele as u64);
+            r = m % rhs;
+        }
+        r as u32
+    }
 
     /// probability prime test by the MillerRabin Pseudoprimes Algorithm and the Lucas Pseudoprimes Algorithms.   
     /// 
@@ -1127,10 +1139,16 @@ impl Nat {
 
         const PRIMES_A: u32 = 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 37;
         const PRIMES_B: u32 = 29 * 31 * 41 * 43 * 47 * 53;
-        let (ra, rb) = (self.clone() % PRIMES_A, self.clone() % PRIMES_B);
-        if ra.clone()%3u32 == 0u32 || ra.clone()%5u32 == 0u32 || ra.clone()%7u32 == 0u32 || ra.clone()%11u32 == 0u32 || ra.clone()%13u32 == 0u32 
-            || ra.clone()%17u32 == 0u32 || ra.clone()%19u32 == 0u32 || ra.clone()%23u32 == 0u32 || ra.clone()%37u32 == 0u32 ||
-            rb.clone()%29u32 == 0u32 || rb.clone()%31u32 == 0u32 || rb.clone()%41u32 == 0u32 || rb.clone()%43u32 == 0u32 || rb.clone()%47u32 == 0u32 || rb.clone()%53u32 == 0u32 {
+        // let (ra, rb) = (self.clone() % PRIMES_A, self.clone() % PRIMES_B);
+        // if ra.clone()%3u32 == 0u32 || ra.clone()%5u32 == 0u32 || ra.clone()%7u32 == 0u32 || ra.clone()%11u32 == 0u32 || ra.clone()%13u32 == 0u32 
+        //     || ra.clone()%17u32 == 0u32 || ra.clone()%19u32 == 0u32 || ra.clone()%23u32 == 0u32 || ra.clone()%37u32 == 0u32 ||
+        //     rb.clone()%29u32 == 0u32 || rb.clone()%31u32 == 0u32 || rb.clone()%41u32 == 0u32 || rb.clone()%43u32 == 0u32 || rb.clone()%47u32 == 0u32 || rb.clone()%53u32 == 0u32 {
+        //     return false
+        // }
+        let (ra, rb) = (self.rem_inner_u32(PRIMES_A), self.rem_inner_u32(PRIMES_B));
+        if ra%3u32 == 0u32 || ra%5u32 == 0u32 || ra%7u32 == 0u32 || ra%11u32 == 0u32 || ra%13u32 == 0u32 
+            || ra%17u32 == 0u32 || ra%19u32 == 0u32 || ra%23u32 == 0u32 || ra%37u32 == 0u32 ||
+            rb%29u32 == 0u32 || rb%31u32 == 0u32 || rb%41u32 == 0u32 || rb%43u32 == 0u32 || rb%47u32 == 0u32 || rb%53u32 == 0u32 {
             return false
         }
         self.prime_validate_by_miller_rabin(n+1, rng) && self.prime_validate_by_lucas()
@@ -1908,6 +1926,102 @@ impl Nat {
                 1
             } else {
                 0
+            }
+        }
+    }
+
+
+    fn rem_inner_u64(&self, rhs: u64) -> u64 {
+        let mut itr = self.iter().rev();
+        let (mut r, rhs) = (0, rhs as u128);
+        while let Some(&a) = itr.next() {
+            r = (r << 32) | (a as u128);
+            if let Some(&b) = itr.next() {
+                r = (r << 32) | (b as u128);
+            }
+            
+            r = r % rhs
+        }
+        
+        r as u64
+    }
+
+    /// generate a number p with the bits length of `bits_len`, such that p is prime 
+    /// with high probability that is related to the number of `test_round_num`;
+    /// 
+    /// `test_round_num` means the number of test rounds, for any odd number that great than 2 and positive integer n, the probability of error 
+    /// in MillerRabinPrimeTest is at most $2^{-n}$.
+    pub fn generate_prime<Rng: IterSource<u32>>(bits_len: usize, test_round_num: usize, rng: &mut Rng) -> Result<Nat, NatError> {
+        if bits_len < 2 {
+            return Err(NatError::new(ParseErrKind::InvalidParameters, "prime size must at least 2-bits"));
+        }
+        
+        const SMALL_PRIMES: [u8; 15] = [
+            3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
+        ];
+        const SMALL_PRIMES_PRODUCT: u64 = 16294579238595022365u64;
+        
+        // let b = if (bits_len & 7) == 0 {8} else {bits_len & 7};
+        // 
+        // let len = (bits_len + 7) >> 3;
+        // let mut buf = Vec::with_capacity(len);
+        let b = if (bits_len & 31) == 0 {32} else {bits_len & 31};
+        let len = (bits_len + 31) >> 5;
+        let mut p = Nat::with_capacity(len);
+        loop {
+            p.as_mut_vec().clear();
+            for x in rng.iter_mut().take(len) {
+                p.as_mut_vec().push(x);
+            }
+            
+            // 清除大于bits_len的位;
+            if b != 32 {
+                *p.iter_mut().last().unwrap() &= (1u32 << b) - 1;
+            }
+
+            // Don't let the value be too small, i.e, set the most significant two bits.
+            // Setting the top two bits, rather than just the top bit,
+            // means that when two of these values are multiplied together,
+            // the result isn't ever one bit short.
+            if b >= 2 {
+                *p.iter_mut().last().unwrap() &= 3 << (b - 2);
+            } else {
+                for (i, x) in p.iter_mut().rev().enumerate() {
+                    if i == 0 {
+                        *x |= 1;
+                    } else if i == 1 {
+                        *x |= 0x80000000;
+                        break;
+                    }
+                }
+            }
+            
+            // 奇数
+            *p.iter_mut().next().unwrap() |= 0x1;
+
+            // Calculate the value mod the product of smallPrimes. If it's
+            // a multiple of any of these primes we add two until it isn't.
+            // The probability of overflowing is minimal and can be ignored
+            // because we still perform Miller-Rabin tests on the result.
+            let modulus = p.rem_inner_u64(SMALL_PRIMES_PRODUCT);
+            
+            'next_delta: for delta in (0u64..(1u64 << 20)).step_by(2) {
+                let m = modulus + delta;
+                for &prime in SMALL_PRIMES.iter() {
+                    let prime = prime as u64;
+                    if (m % prime) == 0 && (bits_len > 6 || m != prime) {
+                        continue 'next_delta;
+                    }
+                }
+                
+                if delta > 0 {
+                    p += (delta & 0xffff_ffff) as u32;
+                }
+                break;
+            }
+            
+            if p.bits_len() == bits_len && p.probably_prime_test(test_round_num, rng) {
+                return Ok(p);
             }
         }
     }
