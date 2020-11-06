@@ -146,10 +146,18 @@ impl BigInt {
     fn abs_inner(&mut self) {
         self.sign = Natural;
     }
+    
+    pub fn copy_to_le(&self, dst: &mut Vec<u8>) {
+        self.nat.copy_to_le(dst);
+    }
 
     /// little endian byte representation for the absolute value of `self`
     pub fn to_le_bytes(&self) -> Vec<u8> {
         self.nat.to_le_bytes()
+    }
+    
+    pub fn copy_to_be(&self, dst: &mut Vec<u8>) {
+        self.nat.copy_to_be(dst);
     }
 
     /// big endian byte representation for the absolute value of `self`

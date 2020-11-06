@@ -147,42 +147,62 @@ impl Nat {
     }
     
     /// little endian
-    pub fn to_le_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.num() << 2);
-        self.iter().for_each(|&x| {v.extend_from_slice(x.to_le_bytes().as_ref());});
-        let mut i = 0;
-        for &ele in v.iter().rev() {
-            if ele != 0 {
-                break;
-            }
-            i += 1;
+    pub fn copy_to_le(&self, dst: &mut Vec<u8>) {
+        dst.clear();
+        if self.is_nan() {
+            return;
         }
         
-        if v.len() > 0 && i == v.len() {
-            v.truncate(v.len() + 1 - i);
-        } else {
-            v.truncate(v.len() - i);
+        self.iter().take(self.num().saturating_sub(1)).for_each(|&x| {
+            for &y in x.to_le_bytes().iter() {
+                dst.push(y);
+            };
+        });
+        
+        match self.iter().last() {
+            Some(&x) => {
+                let i = if x > 0xffffffu32 {4} else if x > 0xffffu32 {3} else if x > 0xffu32 {2} else {1};
+                for &y in x.to_le_bytes().iter().take(i) {
+                    dst.push(y);
+                }
+            },
+            None => {},
         }
+    }
+    
+    /// little endian
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.num() << 2);
+        self.copy_to_le(&mut v);
         v
+    }
+    
+    /// big endian
+    pub fn copy_to_be(&self, dst: &mut Vec<u8>) {
+        dst.clear();
+        if self.is_nan() {
+            return;
+        }
+        
+        match self.iter().last() {
+            Some(&x) => {
+                let i = if x > 0xffffffu32 {0} else if x > 0xffffu32 {1} else if x > 0xffu32 {2} else {3};
+                for &y in x.to_be_bytes().iter().skip(i) {
+                    dst.push(y);
+                }
+            },
+            None => {},
+        }
+        
+        self.iter().rev().skip(1).for_each(|&x| {
+            x.to_be_bytes().iter().for_each(|&y| {dst.push(y);});
+        });
     }
     
     /// big endian
     pub fn to_be_bytes(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(self.num() << 2);
-        let mut itr = self.iter().rev();
-        match itr.next() {
-            Some(&x) => {
-                if (x == 0) && (self.num() == 1) {
-                    v.push(0);
-                } else {
-                    let n = (x.leading_zeros() as usize) >> 3;
-                    let tmp = x.to_be_bytes();
-                    v.extend_from_slice(&tmp[n..]);
-                }
-            },
-            None => {},
-        }
-        itr.for_each(|&x| {v.extend_from_slice(x.to_be_bytes().as_ref());});
+        self.copy_to_be(&mut v);
         v
     }
     
