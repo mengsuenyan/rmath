@@ -7,7 +7,7 @@ license = "Apache-2.0"
 description = "A rust math library"
 readme = "Readme.md"
 repository = "https://github.com/mengsuenyan/rmath.git"
-documentation = "https://docs.rs/rmath/0.1.0/rmath/"
+documentation = "https://docs.rs/rmath/0.1.4/rmath/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
