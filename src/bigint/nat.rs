@@ -1984,7 +1984,7 @@ impl Nat {
             // means that when two of these values are multiplied together,
             // the result isn't ever one bit short.
             if b >= 2 {
-                *p.iter_mut().last().unwrap() &= 3 << (b - 2);
+                *p.iter_mut().last().unwrap() |= 3 << (b - 2);
             } else {
                 for (i, x) in p.iter_mut().rev().enumerate() {
                     if i == 0 {

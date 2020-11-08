@@ -683,12 +683,12 @@ fn nat_generate_small_prime() {
     let s = DefaultSeed::<u32>::new().unwrap();
     let mut rng = CryptoRand::new(&s).unwrap();
 
-    let test_round_num = 20;
+    let test_round_num = 19;
     for n in 2..10 {
         let p = Nat::generate_prime(n, test_round_num, &mut rng).unwrap();
         
         assert_eq!(p.bits_len(), n);
         println!("===>{}", p);
-        assert!(p.probably_prime_test(32, &mut rng));
+        assert!(p.probably_prime_test(31, &mut rng));
     }
 }
