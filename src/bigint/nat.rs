@@ -2237,3 +2237,9 @@ impl Not for Nat {
     }
 }
 
+impl AsRef<[u32]> for Nat {
+    /// little endian
+    fn as_ref(&self) -> &[u32] {
+        self.as_slice()
+    }
+}
